@@ -1,0 +1,73 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { evaluate, isValidPick, pointsFor, describeMarkets, MARKETS, EXACT_POINTS } from '../src/markets.js';
+
+// Beispiel: Heim gewinnt 2:1 (3 Tore, beide treffen, Sieg mit 1 Tor Unterschied)
+test('2:1 wird in allen Märkten richtig gewertet', () => {
+  const ev = (m, p) => evaluate(m, p, 2, 1);
+  assert.equal(ev('1x2', '1').won, true);
+  assert.equal(ev('1x2', 'X').won, false);
+  assert.equal(ev('dc', '1X').won, true);
+  assert.equal(ev('dc', '12').won, true);
+  assert.equal(ev('dc', 'X2').won, false);
+  assert.equal(ev('hcp_home', 'H1').won, true);
+  assert.equal(ev('hcp_home', 'H2').won, false);
+  assert.equal(ev('hcp_away', 'AN').won, true);
+  assert.equal(ev('ou15', 'O').won, true);
+  assert.equal(ev('ou25', 'O').won, true);
+  assert.equal(ev('ou35', 'U').won, true);
+  assert.equal(ev('btts', 'Y').won, true);
+  assert.equal(ev('win_ou25', '1O').won, true);
+  assert.equal(ev('win_ou25', '1U').won, false);
+  assert.deepEqual(ev('exact', '2:1'), { won: true, points: EXACT_POINTS.common });
+  assert.equal(ev('exact', '1:2').won, false);
+});
+
+test('0:0 und Auswärtssieg', () => {
+  assert.equal(evaluate('btts', 'N', 0, 0).won, true);
+  assert.equal(evaluate('ou15', 'U', 0, 0).won, true);
+  assert.equal(evaluate('win_ou25', 'XU', 0, 0).won, true);
+  assert.equal(evaluate('exact', '0:0', 0, 0).points, EXACT_POINTS.rare);
+  // 0:3 Auswärtssieg: Handicap Gast -1 mit 2+ Toren
+  assert.equal(evaluate('hcp_away', 'A2', 0, 3).won, true);
+  assert.equal(evaluate('dc', 'X2', 0, 3).won, true);
+  assert.equal(evaluate('dc', '1X', 0, 3).won, false);
+  assert.equal(evaluate('win_ou25', '2O', 0, 3).won, true);
+});
+
+test('Ungültige Tipps bringen keine Punkte', () => {
+  assert.equal(isValidPick('1x2', 'Z'), false);
+  assert.equal(isValidPick('nope', '1'), false);
+  assert.equal(isValidPick('exact', '10:1'), false);
+  assert.equal(isValidPick('exact', '3:3'), true);
+  assert.deepEqual(evaluate('1x2', 'Z', 1, 0), { won: false, points: 0 });
+});
+
+test('Exakte Ergebnisse haben Seltenheitsstufen', () => {
+  assert.equal(pointsFor('exact', '1:0'), EXACT_POINTS.common);
+  assert.equal(pointsFor('exact', '3:1'), EXACT_POINTS.rare);
+  assert.equal(pointsFor('exact', '5:4'), EXACT_POINTS.veryRare);
+});
+
+test('Genau eine Option pro Markt gewinnt (außer Doppelte Chance: zwei)', () => {
+  for (let h = 0; h <= 6; h++) {
+    for (let a = 0; a <= 6; a++) {
+      for (const m of MARKETS) {
+        const winners = m.wins(h, a);
+        assert.equal(winners.length, m.id === 'dc' ? 2 : 1, `${m.id} ${h}:${a}`);
+        if (m.kind !== 'score') {
+          for (const w of winners) assert.ok(m.options.some((o) => o.id === w), `${m.id} ${h}:${a} ${w}`);
+        }
+      }
+    }
+  }
+});
+
+test('Beschriftungen setzen die Teamnamen ein', () => {
+  const d = describeMarkets({ home_name: 'Bayern', away_name: 'Dortmund' });
+  const hcp = d.find((m) => m.id === 'hcp_home');
+  assert.equal(hcp.label, 'Handicap Bayern −1');
+  assert.equal(hcp.options[0].label, 'Bayern gewinnt mit 2+ Toren');
+  assert.ok(!JSON.stringify(d).includes('{h}'));
+  assert.ok(!JSON.stringify(d).includes('{a}'));
+});
