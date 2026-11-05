@@ -115,7 +115,7 @@ test('Absage und Elfmeterschießen ohne reguläre Zeit: Tipps verfallen ohne Pun
     ],
     NOW,
   );
-  await db.prepare("INSERT INTO groups VALUES ('FAM','F',0)").run();
+  await db.prepare("INSERT INTO groups (code, name, created_at) VALUES ('FAM','F',0)").run();
   await db.prepare("INSERT INTO players (id, group_code, name, salt, pin_hash, created_at) VALUES (1,'FAM','L','s','h',0)").run();
   for (const id of [1, 2]) {
     await db.prepare("INSERT INTO tips VALUES (1, ?, '1x2', '1', 2, 'open', 0, 0)").bind(id).run();
@@ -141,10 +141,21 @@ test('runSync: ohne Token passiert nichts, mit Token läuft das Budget korrekt',
   assert.equal(r1.jobs.length, 4); // alle vier Fenster beim ersten Start
   assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM matches').get().c, 1);
 
-  // Direkt danach (gleiche Minute): nichts fällig, Budget wird nicht angefasst
+  // Danach ist der Wettbewerb bekannt: sein Tabellenstand wird einmal geholt, sonst ist nichts fällig
   seen.length = 0;
-  const r2 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 5, { fetchMatches });
-  assert.equal(r2.jobs.length, 0);
+  const standingsSeen = [];
+  const fetchStandings = async (_t, code) => {
+    standingsSeen.push(code);
+    return { ok: true, rows: [{ team_id: 10, played: 10, goals_for: 20, goals_against: 8, points: 24 }], available: 8 };
+  };
+  const r2 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 5, { fetchMatches, fetchStandings });
+  assert.deepEqual(standingsSeen, ['BL1']);
+  assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM standings').get().c, 1);
+  assert.equal(r2.jobs.length, 1);
+  assert.equal(seen.length, 0);
+
+  const r3 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 10, { fetchMatches, fetchStandings });
+  assert.equal(r3.jobs.length, 0);
   assert.equal(seen.length, 0);
 });
 

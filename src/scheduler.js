@@ -10,6 +10,7 @@
 export const RATE = { perMinute: 10, reserve: 1 };
 
 const DAY = 86400;
+const STANDINGS_INTERVAL = 6 * 3600;
 
 export const toIsoDay = (ts) => new Date(ts * 1000).toISOString().slice(0, 10);
 
@@ -30,9 +31,16 @@ export function availableBudget({ callsLastMinute, perMinute = RATE.perMinute, r
 }
 
 // lastRun: { [key]: unixSeconds }, activity: { live, soon }
-export function planJobs({ now, lastRun, activity, budget }) {
+export function planJobs({ now, lastRun, activity, budget, competitions = [] }) {
   if (budget <= 0) return [];
   const due = [];
+  // Tabellenstände (Grundlage der Punkte) ändern sich langsam: alle 6 Stunden, nach den Spielfenstern
+  for (const code of competitions) {
+    const key = `st:${code}`;
+    const last = lastRun[key] ?? 0;
+    const age = now - last;
+    if (age >= STANDINGS_INTERVAL) due.push({ key, code, urgency: last === 0 ? 1e9 : age / STANDINGS_INTERVAL });
+  }
   for (const job of windowJobs(now, activity)) {
     const last = lastRun[job.key] ?? 0;
     const age = now - last;
@@ -46,5 +54,5 @@ export function planJobs({ now, lastRun, activity, budget }) {
     }
   }
   due.sort((a, b) => b.urgency - a.urgency);
-  return due.slice(0, budget).map(({ key, dateFrom, dateTo }) => ({ key, dateFrom, dateTo }));
+  return due.slice(0, budget).map(({ key, dateFrom, dateTo, code }) => (code ? { key, code } : { key, dateFrom, dateTo }));
 }

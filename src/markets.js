@@ -122,15 +122,17 @@ export function isValidPick(marketId, pick) {
   return m.options.some((o) => o.id === pick);
 }
 
-export function pointsFor(marketId, pick) {
+// odds (optional): berechnete Punkte für ein Spiel, siehe odds.js. Ohne odds gelten die festen Punkte.
+export function pointsFor(marketId, pick, odds = null) {
   const m = marketById(marketId);
   if (!m || !isValidPick(marketId, pick)) return 0;
   if (m.kind === 'score') {
+    if (odds?.exact?.[pick] != null) return odds.exact[pick];
     if (EXACT_COMMON.has(pick)) return EXACT_POINTS.common;
     if (EXACT_RARE.has(pick)) return EXACT_POINTS.rare;
     return EXACT_POINTS.veryRare;
   }
-  return m.options.find((o) => o.id === pick).points;
+  return odds?.options?.[marketId]?.[pick] ?? m.options.find((o) => o.id === pick).points;
 }
 
 // Wertet einen Tipp gegen das 90-Minuten-Ergebnis aus
@@ -141,18 +143,25 @@ export function evaluate(marketId, pick, home, away) {
   return { won, points: won ? pointsFor(marketId, pick) : 0 };
 }
 
+// Punkte für jeden Endstand 0:0 bis 9:9
+function exactTable(odds) {
+  const table = {};
+  for (let h = 0; h <= 9; h++) for (let a = 0; a <= 9; a++) table[`${h}:${a}`] = pointsFor('exact', `${h}:${a}`, odds);
+  return table;
+}
+
 const fill = (text, match) =>
   text.replaceAll('{h}', match.home_name ?? match.home ?? 'Heim').replaceAll('{a}', match.away_name ?? match.away ?? 'Gast');
 
 // Märkte für die Oberfläche, Teamnamen sind bereits eingesetzt
-export function describeMarkets(match) {
+export function describeMarkets(match, odds = null) {
   return MARKETS.map((m) => ({
     id: m.id,
     group: m.group,
     kind: m.kind ?? 'choice',
     label: fill(m.label, match),
     hint: fill(m.hint, match),
-    options: m.options.map((o) => ({ id: o.id, label: fill(o.label, match), points: o.points })),
-    ...(m.kind === 'score' ? { exactPoints: EXACT_POINTS } : {}),
+    options: m.options.map((o) => ({ id: o.id, label: fill(o.label, match), points: odds?.options?.[m.id]?.[o.id] ?? o.points })),
+    ...(m.kind === 'score' ? { exactTable: exactTable(odds) } : {}),
   }));
 }

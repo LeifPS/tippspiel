@@ -67,6 +67,8 @@ log('Spieleliste zeigt die Zahl der Tipps');
 
 // 4. Garderobe: Kauf ohne genug Münzen wird erklärt
 await page.click('a.tab:has-text("Ich")');
+assert.equal(await page.locator('.comp-settings').count(), 0);
+log('Mitglieder sehen die Wettbewerbs-Einstellung nicht');
 await page.click('button.chip:has-text("Zubehör")');
 await page.click('.item:has-text("Krone")');
 await page.waitForSelector('#toast.show');
@@ -98,6 +100,22 @@ await p2.click('.sheet .btn:has-text("kaufen")');
 await p2.waitForSelector('.item:has-text("Stirnband")[aria-pressed="true"]');
 assert.equal(await p2.textContent('.fact:nth-child(2) b'), '86'); // 126 Münzen minus 40 fürs Stirnband
 log('Kauf mit Bestätigung');
+
+// 7. Gründer stellt die Wettbewerbe ein: ohne Premier League verschwindet das Arsenal-Spiel
+await p2.locator('.comp-settings').scrollIntoViewIfNeeded();
+await p2.screenshot({ path: `${out}/f4-wettbewerbe.png` });
+await p2.click('.comp-settings .titlerow:has-text("Premier League")');
+await p2.click('.comp-settings .btn:has-text("Auswahl speichern")');
+await p2.waitForFunction(() => /Gespeichert/.test(document.getElementById('toast')?.textContent ?? ''));
+await p2.goto('http://localhost:8787/#/spiele', { waitUntil: 'domcontentloaded' });
+await p2.waitForSelector('.fixture:has-text("Leipzig")');
+assert.equal(await p2.locator('.fixture:has-text("Arsenal")').count(), 0);
+log('Gründer schaltet einen Wettbewerb ab, das Spiel verschwindet');
+await p2.goto('http://localhost:8787/#/ich', { waitUntil: 'domcontentloaded' });
+await p2.click('.comp-settings .titlerow:has-text("Premier League")');
+await p2.click('.comp-settings .btn:has-text("Auswahl speichern")');
+await p2.waitForFunction(() => /Gespeichert/.test(document.getElementById('toast')?.textContent ?? ''));
+log('Wieder einschalten');
 
 await browser.close();
 console.log(errors.length ? 'JS-FEHLER:\n' + errors.join('\n') : 'keine JS-Fehler');

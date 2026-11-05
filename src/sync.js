@@ -1,5 +1,5 @@
 // Holt Spieldaten von football-data.org, schreibt sie in D1 und wertet Tipps aus.
-import { fetchMatches as defaultFetch, normalizeMatch } from './footballdata.js';
+import { fetchMatches as defaultFetch, fetchStandings as defaultStandings, normalizeMatch } from './footballdata.js';
 import { availableBudget, planJobs, RATE } from './scheduler.js';
 import { evaluate } from './markets.js';
 
@@ -63,6 +63,21 @@ ON CONFLICT(code) DO UPDATE SET name = excluded.name, emblem = excluded.emblem, 
 WHERE competitions.name IS NOT excluded.name OR competitions.emblem IS NOT excluded.emblem
   OR competitions.area IS NOT excluded.area`;
 
+export async function upsertStandings(db, comp, rows) {
+  const stmts = rows.map((r) =>
+    db
+      .prepare(
+        `INSERT INTO standings (comp, team_id, played, goals_for, goals_against, points) VALUES (?,?,?,?,?,?)
+         ON CONFLICT(comp, team_id) DO UPDATE SET played = excluded.played, goals_for = excluded.goals_for,
+           goals_against = excluded.goals_against, points = excluded.points
+         WHERE standings.played IS NOT excluded.played OR standings.goals_for IS NOT excluded.goals_for
+           OR standings.goals_against IS NOT excluded.goals_against OR standings.points IS NOT excluded.points`,
+      )
+      .bind(comp, r.team_id, r.played, r.goals_for, r.goals_against, r.points),
+  );
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+}
+
 export async function upsertMatches(db, rawMatches, now) {
   const comps = new Map();
   const statements = [];
@@ -111,7 +126,7 @@ export async function settleMatches(db) {
     const hasResult = m.status === 'FINISHED' && m.home_goals !== null && m.away_goals !== null;
     const key = hasResult ? `F:${m.home_goals}:${m.away_goals}` : 'V';
     const { results: tips } = await db
-      .prepare('SELECT player_id, market, pick FROM tips WHERE match_id = ?')
+      .prepare('SELECT player_id, market, pick, potential FROM tips WHERE match_id = ?')
       .bind(m.id)
       .all();
     const updates = tips.map((t) => {
@@ -120,7 +135,8 @@ export async function settleMatches(db) {
       if (hasResult) {
         const r = evaluate(t.market, t.pick, m.home_goals, m.away_goals);
         status = r.won ? 'won' : 'lost';
-        points = r.points;
+        // Es zählen die Punkte, die beim Tippen angezeigt wurden (potential)
+        points = r.won ? (t.potential ?? r.points) : 0;
       }
       return db
         .prepare('UPDATE tips SET status = ?, points = ? WHERE player_id = ? AND match_id = ? AND market = ?')
@@ -151,12 +167,15 @@ export async function runSync(env, now = nowSec(), deps = {}) {
 
   const lastRun = Object.fromEntries(Object.entries(state).map(([k, v]) => [k, v.lastRun]));
   const activity = await loadActivity(db, now);
-  const jobs = planJobs({ now, lastRun, activity, budget });
+  const { results: comps } = await db.prepare('SELECT code FROM competitions').all();
+  const jobs = planJobs({ now, lastRun, activity, budget, competitions: comps.map((c) => c.code) });
 
   const report = { budget, activity, jobs: [], settled: 0 };
   for (const job of jobs) {
     await db.prepare('INSERT INTO api_calls (ts) VALUES (?)').bind(now).run();
-    const res = await doFetch(env.FOOTBALL_DATA_TOKEN, job);
+    const res = job.code
+      ? await (deps.fetchStandings ?? defaultStandings)(env.FOOTBALL_DATA_TOKEN, job.code)
+      : await doFetch(env.FOOTBALL_DATA_TOKEN, job);
     if (res.rateLimited) {
       await setState(db, 'api:blocked', now, String(now + res.retryAfter + 2));
       report.jobs.push({ key: job.key, rateLimited: true });
@@ -166,6 +185,13 @@ export async function runSync(env, now = nowSec(), deps = {}) {
       await setState(db, 'api:last_error', now, `${job.key}: HTTP ${res.status} ${res.error ?? ''}`.trim());
       await setState(db, job.key, now, 'error');
       report.jobs.push({ key: job.key, error: res.status });
+      continue;
+    }
+    if (job.code) {
+      await upsertStandings(db, job.code, res.rows);
+      await setState(db, job.key, now, String(res.rows.length));
+      report.jobs.push({ key: job.key, rows: res.rows.length });
+      if (res.available !== null && res.available <= RATE.reserve) break;
       continue;
     }
     const accepted = await upsertMatches(db, res.matches, now);

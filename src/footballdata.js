@@ -21,6 +21,33 @@ export async function fetchMatches(token, { dateFrom, dateTo }, fetchImpl = fetc
   };
 }
 
+// Tabellenstand eines Wettbewerbs (alle Gruppen der Gesamttabelle zusammen)
+export async function fetchStandings(token, code, fetchImpl = fetch) {
+  const res = await fetchImpl(`${BASE}/competitions/${code}/standings`, { headers: { 'X-Auth-Token': token } });
+  const available = Number(res.headers.get('X-Requests-Available-Minute'));
+  if (res.status === 429) {
+    const wait = Number(res.headers.get('X-RequestCounter-Reset'));
+    return { ok: false, rateLimited: true, retryAfter: Number.isFinite(wait) && wait > 0 ? wait : 60 };
+  }
+  if (!res.ok) return { ok: false, status: res.status, error: (await res.text()).slice(0, 300) };
+  const json = await res.json();
+  const rows = new Map();
+  for (const st of Array.isArray(json.standings) ? json.standings : []) {
+    if (st.type && st.type !== 'TOTAL') continue;
+    for (const r of st.table ?? []) {
+      if (!r?.team?.id || typeof r.playedGames !== 'number') continue;
+      rows.set(r.team.id, {
+        team_id: r.team.id,
+        played: r.playedGames,
+        goals_for: num(r.goalsFor) ?? 0,
+        goals_against: num(r.goalsAgainst) ?? 0,
+        points: num(r.points) ?? 0,
+      });
+    }
+  }
+  return { ok: true, rows: [...rows.values()], available: Number.isFinite(available) ? available : null };
+}
+
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const pair = (p) => (p && num(p.home) !== null && num(p.away) !== null ? { home: p.home, away: p.away } : null);
 

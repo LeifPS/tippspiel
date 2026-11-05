@@ -1,4 +1,6 @@
 import { describeMarkets, isValidPick, marketById, pointsFor } from './markets.js';
+import { loadOdds } from './odds.js';
+import { FREE_COMPETITIONS } from './footballdata.js';
 import {
   hashPin, LOCK_SECONDS, MAX_FAILS, NAME_RE, newGroupCode, newSalt, newToken, PIN_RE, sha256,
 } from './auth.js';
@@ -112,6 +114,65 @@ async function authenticate(request, db) {
 
 // ---------- Konto ----------
 
+const COMP_NAMES = {
+  WC: 'Weltmeisterschaft', EC: 'Europameisterschaft', CL: 'Champions League', BL1: 'Bundesliga', DED: 'Eredivisie',
+  BSA: 'Série A Brasilien', PD: 'La Liga', FL1: 'Ligue 1', ELC: 'Championship', PPL: 'Primeira Liga', SA: 'Serie A', PL: 'Premier League',
+};
+
+// Welche Wettbewerbe die Gruppe tippt: Liste von Kürzeln oder null für alle
+const enabledCompetitions = (group) => {
+  const list = parseJson(group?.competitions, null);
+  return Array.isArray(list) ? list : null;
+};
+
+const groupView = (group, playerId) => ({ code: group.code, name: group.name, isFounder: group.founder_id === playerId });
+
+async function groupOf(db, player) {
+  return db.prepare('SELECT * FROM groups WHERE code = ?').bind(player.group_code).first();
+}
+
+async function assertCompetitionOpen(db, player, competition) {
+  const enabled = enabledCompetitions(await groupOf(db, player));
+  if (enabled && !enabled.includes(competition)) {
+    throw new HttpError(403, 'Dieser Wettbewerb ist in deiner Gruppe nicht freigeschaltet.');
+  }
+}
+
+async function groupSettings(db, player, now) {
+  const group = await groupOf(db, player);
+  const enabled = enabledCompetitions(group);
+  const { results: known } = await db.prepare('SELECT code, name, emblem FROM competitions').all();
+  const { results: counts } = await db
+    .prepare('SELECT competition AS code, COUNT(*) AS n FROM matches WHERE kickoff > ? AND kickoff < ? GROUP BY competition')
+    .bind(now, now + 14 * DAY)
+    .all();
+  return json({
+    isFounder: group.founder_id === player.id,
+    competitions: [...FREE_COMPETITIONS].map((code) => {
+      const k = known.find((c) => c.code === code);
+      return {
+        code,
+        name: COMP_NAMES[code] ?? k?.name ?? code,
+        emblem: k?.emblem ?? null,
+        upcoming: counts.find((c) => c.code === code)?.n ?? 0,
+        enabled: !enabled || enabled.includes(code),
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name, 'de')),
+  });
+}
+
+async function saveGroupSettings(request, db, player, now) {
+  const group = await groupOf(db, player);
+  if (group.founder_id !== player.id) throw new HttpError(403, 'Nur der Gründer der Gruppe kann das ändern.');
+  const body = await readBody(request);
+  const list = Array.isArray(body.competitions) ? [...new Set(body.competitions.map(String))] : null;
+  if (!list || list.some((c) => !FREE_COMPETITIONS.has(c))) throw new HttpError(400, 'Unbekannter Wettbewerb.');
+  if (list.length === 0) throw new HttpError(400, 'Wähle mindestens einen Wettbewerb aus.');
+  const value = list.length === FREE_COMPETITIONS.size ? null : JSON.stringify(list);
+  await db.prepare('UPDATE groups SET competitions = ? WHERE code = ?').bind(value, group.code).run();
+  return groupSettings(db, player, now);
+}
+
 async function register(request, db, now) {
   const body = await readBody(request);
   const name = String(body.name ?? '').trim();
@@ -134,7 +195,7 @@ async function register(request, db, now) {
         .prepare('INSERT OR IGNORE INTO groups (code, name, created_at) VALUES (?, ?, ?)')
         .bind(code, groupName, now)
         .run();
-      if (res.meta.changes === 1) group = { code, name: groupName };
+      if (res.meta.changes === 1) group = { code, name: groupName, created: true };
     }
     if (!group) throw new HttpError(500, 'Gruppe konnte nicht angelegt werden');
   }
@@ -157,8 +218,14 @@ async function register(request, db, now) {
     .prepare('SELECT * FROM players WHERE group_code = ? AND name = ?')
     .bind(group.code, name)
     .first();
+  if (group.created) {
+    await db.prepare('UPDATE groups SET founder_id = ? WHERE code = ?').bind(player.id, group.code).run();
+    group.founder_id = player.id;
+  } else {
+    group = await db.prepare('SELECT * FROM groups WHERE code = ?').bind(group.code).first();
+  }
   const token = await startSession(db, player.id, now);
-  return json({ token, group: { code: group.code, name: group.name }, ...(await profileOf(db, player)) }, 201);
+  return json({ token, group: groupView(group, player.id), ...(await profileOf(db, player)) }, 201);
 }
 
 async function login(request, db, now) {
@@ -187,7 +254,7 @@ async function login(request, db, now) {
   if (player.fails > 0) await db.prepare('UPDATE players SET fails = 0 WHERE id = ?').bind(player.id).run();
   const group = await db.prepare('SELECT * FROM groups WHERE code = ?').bind(code).first();
   const token = await startSession(db, player.id, now);
-  return json({ token, group: { code: group.code, name: group.name }, ...(await profileOf(db, player)) });
+  return json({ token, group: groupView(group, player.id), ...(await profileOf(db, player)) });
 }
 
 // Wer ist schon in der Gruppe? Damit Kinder beim Anmelden einfach ihren Avatar antippen können.
@@ -229,23 +296,26 @@ async function listMatches(url, db, player, now) {
   const ahead = clamp(url.searchParams.get('ahead'), 10, 30);
   const from = startOfUtcDay(now) - back * DAY;
   const to = startOfUtcDay(now) + (ahead + 1) * DAY;
+  const enabled = enabledCompetitions(await groupOf(db, player));
+  const inList = enabled ? ` AND m.competition IN (${enabled.map(() => '?').join(',')})` : '';
   const { results } = await db
     .prepare(
       `SELECT m.*,
          (SELECT COUNT(*) FROM tips t WHERE t.match_id = m.id AND t.player_id = ?) AS my_tips,
          (SELECT COALESCE(SUM(t.points), 0) FROM tips t WHERE t.match_id = m.id AND t.player_id = ?) AS my_points
-       FROM matches m WHERE m.kickoff >= ? AND m.kickoff < ?
+       FROM matches m WHERE m.kickoff >= ? AND m.kickoff < ?${inList}
        ORDER BY m.kickoff, m.id LIMIT 500`,
     )
-    .bind(player.id, player.id, from, to)
+    .bind(player.id, player.id, from, to, ...(enabled ?? []))
     .all();
   const { results: competitions } = await db
     .prepare(
       `SELECT c.code, c.name, c.emblem, c.area FROM competitions c
        WHERE c.code IN (SELECT DISTINCT competition FROM matches WHERE kickoff >= ? AND kickoff < ?)
+       ${enabled ? `AND c.code IN (${enabled.map(() => '?').join(',')})` : ''}
        ORDER BY c.name`,
     )
-    .bind(from, to)
+    .bind(from, to, ...(enabled ?? []))
     .all();
   return json({
     now,
@@ -271,6 +341,7 @@ async function matchDetail(id, db, player, now) {
     .bind(id)
     .first();
   if (!row) throw new HttpError(404, 'Spiel nicht gefunden');
+  await assertCompetitionOpen(db, player, row.competition);
   const match = { ...matchView(row, now), competitionName: row.comp_name, competitionEmblem: row.comp_emblem };
 
   const members = await db.prepare('SELECT COUNT(*) AS c FROM players WHERE group_code = ?').bind(player.group_code).first('c');
@@ -301,9 +372,10 @@ async function matchDetail(id, db, player, now) {
     others = [...byPlayer.values()];
   }
 
+  const odds = await loadOdds(db, row);
   return json({
-    match,
-    markets: describeMarkets({ home_name: row.home_name, away_name: row.away_name }),
+    match: { ...match, pointsMode: odds ? 'form' : 'fixed' },
+    markets: describeMarkets({ home_name: row.home_name, away_name: row.away_name }, odds),
     myTips: await myTipsFor(db, player.id, id),
     group: { members, tippers, others },
   });
@@ -313,8 +385,9 @@ async function putTip(request, id, db, player, now) {
   const body = await readBody(request);
   const market = String(body.market ?? '');
   if (!marketById(market)) throw new HttpError(400, 'Unbekannter Tipp-Markt');
-  const match = await db.prepare('SELECT id, kickoff, status FROM matches WHERE id = ?').bind(id).first();
+  const match = await db.prepare('SELECT id, competition, home_id, away_id, kickoff, status FROM matches WHERE id = ?').bind(id).first();
   if (!match) throw new HttpError(404, 'Spiel nicht gefunden');
+  await assertCompetitionOpen(db, player, match.competition);
   if (match.kickoff <= now) throw new HttpError(403, 'Anpfiff war schon, Tippen ist nicht mehr möglich.');
   if (!TIPPABLE.has(match.status)) throw new HttpError(409, 'Dieses Spiel ist verschoben oder abgesagt.');
 
@@ -326,6 +399,7 @@ async function putTip(request, id, db, player, now) {
   } else {
     const pick = String(body.pick ?? '');
     if (!isValidPick(market, pick)) throw new HttpError(400, 'Ungültiger Tipp');
+    const odds = await loadOdds(db, match);
     // Pro Spiel zählt genau ein Tipp: ein Tipp in einem anderen Markt ersetzt den bisherigen
     await db.batch([
       db.prepare('DELETE FROM tips WHERE player_id = ? AND match_id = ? AND market != ?').bind(player.id, id, market),
@@ -335,7 +409,7 @@ async function putTip(request, id, db, player, now) {
            ON CONFLICT(player_id, match_id, market) DO UPDATE SET
              pick = excluded.pick, potential = excluded.potential, created_at = excluded.created_at`,
         )
-        .bind(player.id, id, market, pick, pointsFor(market, pick), now),
+        .bind(player.id, id, market, pick, pointsFor(market, pick, odds), now),
     ]);
   }
   return json({ myTips: await myTipsFor(db, player.id, id) });
@@ -473,13 +547,14 @@ async function route(request, env, now) {
   if (!player) throw new HttpError(401, 'Bitte melde dich an.');
 
   if (path === '/api/me' && method === 'GET') {
-    const group = await db.prepare('SELECT code, name FROM groups WHERE code = ?').bind(player.group_code).first();
-    return json({ group, ...(await profileOf(db, player)) });
+    return json({ group: groupView(await groupOf(db, player), player.id), ...(await profileOf(db, player)) });
   }
   if (path === '/api/logout' && method === 'POST') {
     await db.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256(bearer(request))).run();
     return json({ ok: true });
   }
+  if (path === '/api/group/settings' && method === 'GET') return groupSettings(db, player, now);
+  if (path === '/api/group/settings' && method === 'POST') return saveGroupSettings(request, db, player, now);
   if (path === '/api/matches' && method === 'GET') return listMatches(url, db, player, now);
   const m = /^\/api\/matches\/(\d+)$/.exec(path);
   if (m && method === 'GET') return matchDetail(Number(m[1]), db, player, now);
