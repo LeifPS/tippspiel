@@ -136,7 +136,11 @@ export async function settleMatches(db) {
 export async function runSync(env, now = nowSec(), deps = {}) {
   const db = env.DB;
   const doFetch = deps.fetchMatches ?? defaultFetch;
-  if (!env.FOOTBALL_DATA_TOKEN) return { skipped: 'kein API-Token gesetzt' };
+  if (!env.FOOTBALL_DATA_TOKEN) {
+    await setState(db, 'sync:heartbeat', now, 'kein Token');
+    return { skipped: 'kein API-Token gesetzt' };
+  }
+  await setState(db, 'sync:heartbeat', now, 'ok');
 
   const state = await loadState(db);
   const blockedUntil = Number(state['api:blocked']?.value ?? 0);
@@ -175,7 +179,7 @@ export async function runSync(env, now = nowSec(), deps = {}) {
   return report;
 }
 
-export async function syncHealth(db) {
+export async function syncHealth(db, { tokenSet = null } = {}) {
   const state = await loadState(db);
   const counts = await db
     .prepare(
@@ -185,6 +189,8 @@ export async function syncHealth(db) {
     .first();
   return {
     matches: counts?.total ?? 0,
+    tokenSet,
+    heartbeat: state['sync:heartbeat'] ? { at: state['sync:heartbeat'].lastRun, status: state['sync:heartbeat'].value } : null,
     lastRuns: Object.fromEntries(
       Object.entries(state)
         .filter(([k]) => k.startsWith('win:'))

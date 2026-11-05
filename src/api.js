@@ -460,7 +460,7 @@ async function route(request, env, now) {
   const { pathname: path } = url;
   const method = request.method;
 
-  if (path === '/api/health' && method === 'GET') return json(await syncHealth(db));
+  if (path === '/api/health' && method === 'GET') return json(await syncHealth(db, { tokenSet: Boolean(env.FOOTBALL_DATA_TOKEN) }));
   if (path === '/api/register' && method === 'POST') return register(request, db, now);
   if (path === '/api/login' && method === 'POST') return login(request, db, now);
   const g = /^\/api\/group\/([A-Za-z0-9]{6})$/.exec(path);
