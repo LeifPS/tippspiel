@@ -43,7 +43,7 @@ const publicPlayer = (p) => ({
   id: p.id,
   name: p.name,
   avatar: parseJson(p.avatar, DEFAULT_AVATAR),
-  frame: p.frame,
+  frame: p.frame && p.frame !== 'none' ? p.frame : 'f0', // ältere Zeilen können noch 'none' enthalten
   title: p.title,
 });
 
@@ -148,7 +148,7 @@ async function register(request, db, now) {
   const salt = newSalt();
   const res = await db
     .prepare(
-      'INSERT INTO players (group_code, name, salt, pin_hash, avatar, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      "INSERT INTO players (group_code, name, salt, pin_hash, avatar, frame, created_at) VALUES (?, ?, ?, ?, ?, 'f0', ?)",
     )
     .bind(group.code, name, salt, await hashPin(salt, pin), JSON.stringify(DEFAULT_AVATAR), now)
     .run();

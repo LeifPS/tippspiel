@@ -14,7 +14,7 @@ export const MARKETS = [
     group: 'Klassisch',
     label: 'Spielausgang',
     hint: 'Wer liegt nach 90 Minuten vorn?',
-    options: [opt('1', '{h}', 2), opt('X', 'Unentschieden', 4), opt('2', '{a}', 3)],
+    options: [opt('1', '{h}', 2), opt('X', 'Remis', 4), opt('2', '{a}', 3)],
     wins: (h, a) => [sign(h, a)],
   },
   {

@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS players (
   salt TEXT NOT NULL,
   pin_hash TEXT NOT NULL,
   avatar TEXT NOT NULL DEFAULT '{}',
-  frame TEXT NOT NULL DEFAULT 'none',
+  frame TEXT NOT NULL DEFAULT 'f0',
   title TEXT NOT NULL DEFAULT 'rookie',
   coins_spent INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
