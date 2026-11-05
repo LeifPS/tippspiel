@@ -117,5 +117,26 @@ await p2.click('.comp-settings .btn:has-text("Auswahl speichern")');
 await p2.waitForFunction(() => /Gespeichert/.test(document.getElementById('toast')?.textContent ?? ''));
 log('Wieder einschalten');
 
+// 8. Ligatabellen
+await p2.goto('http://localhost:8787/#/tabelle', { waitUntil: 'domcontentloaded' });
+await p2.waitForSelector('.league tbody tr:has-text("Bayern")');
+await p2.screenshot({ path: `${out}/f5-tabelle.png` });
+await p2.click('.chip:has-text("Premier League")');
+await p2.waitForSelector('.league tbody tr:has-text("Arsenal")');
+assert.equal(await p2.locator('.league tbody tr:has-text("Bayern")').count(), 0);
+log('Tabellen: Wettbewerb wechseln');
+
+// 9. Ausfälle zeigen eine Fehlermeldung statt ewig "Lädt …"
+await p2.route('**/api/matches/5004', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ match: null, markets: null }) }));
+await p2.goto('http://localhost:8787/#/spiel/5004', { waitUntil: 'domcontentloaded' });
+await p2.waitForSelector('.empty:has-text("Das hat nicht geklappt")');
+assert.equal(await p2.locator('.empty button:has-text("Seite neu laden")').count(), 1);
+log('Zeichenfehler: Fehlermeldung statt Dauer-Laden');
+await p2.unroute('**/api/matches/5004');
+await p2.route('**/api/matches/5004', (route) => route.abort());
+await p2.reload({ waitUntil: 'domcontentloaded' });
+await p2.waitForSelector('.empty:has-text("Keine Verbindung")');
+log('Verbindungsfehler: Fehlermeldung mit erneutem Versuch');
+
 await browser.close();
 console.log(errors.length ? 'JS-FEHLER:\n' + errors.join('\n') : 'keine JS-Fehler');

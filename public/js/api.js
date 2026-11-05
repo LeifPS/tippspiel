@@ -23,20 +23,28 @@ export class ApiError extends Error {
   }
 }
 
+const TIMEOUT_MS = 15000;
+
 export async function api(path, { method = 'GET', body } = {}) {
   const token = getToken();
   let res;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     res = await fetch(path, {
       method,
+      signal: controller.signal,
       headers: {
         ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-  } catch {
+  } catch (e) {
+    if (e?.name === 'AbortError') throw new ApiError('Der Server antwortet gerade nicht. Versuche es gleich noch einmal.', 0);
     throw new ApiError('Keine Verbindung. Prüfe dein Internet und versuche es noch einmal.', 0);
+  } finally {
+    clearTimeout(timer);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

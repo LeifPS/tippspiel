@@ -1,5 +1,5 @@
 // Holt Spieldaten von football-data.org, schreibt sie in D1 und wertet Tipps aus.
-import { fetchMatches as defaultFetch, normalizeMatch } from './footballdata.js';
+import { fetchMatches as defaultFetch, fetchStandings as defaultStandings, normalizeMatch } from './footballdata.js';
 import { availableBudget, planJobs, RATE } from './scheduler.js';
 import { evaluate } from './markets.js';
 
@@ -62,6 +62,24 @@ INSERT INTO competitions (code, name, emblem, area) VALUES (?,?,?,?)
 ON CONFLICT(code) DO UPDATE SET name = excluded.name, emblem = excluded.emblem, area = excluded.area
 WHERE competitions.name IS NOT excluded.name OR competitions.emblem IS NOT excluded.emblem
   OR competitions.area IS NOT excluded.area`;
+
+export async function upsertTable(db, comp, rows) {
+  const stmts = rows.map((r) =>
+    db
+      .prepare(
+        `INSERT INTO league_tables (comp, grp, team_id, position, name, tla, crest, played, won, draw, lost, goals_for, goals_against, points)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(comp, grp, team_id) DO UPDATE SET position = excluded.position, name = excluded.name, tla = excluded.tla,
+           crest = excluded.crest, played = excluded.played, won = excluded.won, draw = excluded.draw, lost = excluded.lost,
+           goals_for = excluded.goals_for, goals_against = excluded.goals_against, points = excluded.points
+         WHERE league_tables.position IS NOT excluded.position OR league_tables.played IS NOT excluded.played
+           OR league_tables.points IS NOT excluded.points OR league_tables.goals_for IS NOT excluded.goals_for
+           OR league_tables.goals_against IS NOT excluded.goals_against OR league_tables.crest IS NOT excluded.crest`,
+      )
+      .bind(comp, r.grp, r.team_id, r.position, r.name, r.tla, r.crest, r.played, r.won, r.draw, r.lost, r.goals_for, r.goals_against, r.points),
+  );
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+}
 
 export async function upsertMatches(db, rawMatches, now) {
   const comps = new Map();
@@ -151,12 +169,15 @@ export async function runSync(env, now = nowSec(), deps = {}) {
 
   const lastRun = Object.fromEntries(Object.entries(state).map(([k, v]) => [k, v.lastRun]));
   const activity = await loadActivity(db, now);
-  const jobs = planJobs({ now, lastRun, activity, budget });
+  const { results: comps } = await db.prepare('SELECT code FROM competitions').all();
+  const jobs = planJobs({ now, lastRun, activity, budget, competitions: comps.map((c) => c.code) });
 
   const report = { budget, activity, jobs: [], settled: 0 };
   for (const job of jobs) {
     await db.prepare('INSERT INTO api_calls (ts) VALUES (?)').bind(now).run();
-    const res = await doFetch(env.FOOTBALL_DATA_TOKEN, job);
+    const res = job.code
+      ? await (deps.fetchStandings ?? defaultStandings)(env.FOOTBALL_DATA_TOKEN, job.code)
+      : await doFetch(env.FOOTBALL_DATA_TOKEN, job);
     if (res.rateLimited) {
       await setState(db, 'api:blocked', now, String(now + res.retryAfter + 2));
       report.jobs.push({ key: job.key, rateLimited: true });
@@ -166,6 +187,13 @@ export async function runSync(env, now = nowSec(), deps = {}) {
       await setState(db, 'api:last_error', now, `${job.key}: HTTP ${res.status} ${res.error ?? ''}`.trim());
       await setState(db, job.key, now, 'error');
       report.jobs.push({ key: job.key, error: res.status });
+      continue;
+    }
+    if (job.code) {
+      await upsertTable(db, job.code, res.rows);
+      await setState(db, job.key, now, String(res.rows.length));
+      report.jobs.push({ key: job.key, rows: res.rows.length });
+      if (res.available !== null && res.available <= RATE.reserve) break;
       continue;
     }
     const accepted = await upsertMatches(db, res.matches, now);

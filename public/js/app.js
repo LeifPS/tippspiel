@@ -4,7 +4,7 @@ import { confirmSheet, dayLabel, fmtTime, h, icon, toast } from './ui.js';
 
 const root = document.getElementById('app');
 const GROUP_KEY = 'tippspiel.group';
-const state = { me: null, group: null, filter: { tab: 'upcoming', comp: null }, wardrobe: 'hair' };
+const state = { me: null, group: null, filter: { tab: 'upcoming', comp: null }, wardrobe: 'hair', tableComp: null };
 let renderId = 0;
 let refreshTimer = null;
 
@@ -50,7 +50,7 @@ function tabbar(active) {
   return h(
     'div',
     { class: 'tabbar' },
-    h('nav', { 'aria-label': 'Hauptmenü' }, tabLink('spiele', 'Spiele', 'ball', active), tabLink('rangliste', 'Rangliste', 'trophy', active), tabLink('ich', 'Ich', 'shirt', active)),
+    h('nav', { 'aria-label': 'Hauptmenü' }, tabLink('spiele', 'Spiele', 'ball', active), tabLink('tabelle', 'Tabellen', 'table', active), tabLink('rangliste', 'Rangliste', 'trophy', active), tabLink('ich', 'Ich', 'shirt', active)),
   );
 }
 
@@ -70,7 +70,11 @@ function loading(text = 'Lädt …') {
 }
 
 function errorBox(err, retry) {
-  return h('div', { class: 'empty' }, h('h2', null, 'Das hat nicht geklappt'), h('p', null, err.message), retry && h('div', { style: 'margin-top:16px' }, h('button', { class: 'btn small', onclick: retry }, 'Noch einmal versuchen')));
+  const text = err instanceof ApiError ? err.message : 'Die Seite konnte nicht angezeigt werden. Lade sie neu. Falls es bleibt, ist die App gerade veraltet.';
+  return h('div', { class: 'empty' }, h('h2', null, 'Das hat nicht geklappt'), h('p', null, text),
+    h('div', { style: 'margin-top:16px;display:flex;gap:8px;flex-wrap:wrap' },
+      retry && h('button', { class: 'btn small', onclick: retry }, 'Noch einmal versuchen'),
+      h('button', { class: 'btn small ghost', onclick: () => location.reload() }, 'Seite neu laden')));
 }
 
 // ---------- Start ----------
@@ -101,10 +105,19 @@ function render() {
   if (!state.me) return renderWelcome(id);
   const [view = 'spiele', arg] = location.hash.replace(/^#\/?/, '').split('/');
   window.scrollTo(0, 0);
-  if (view === 'spiel' && /^\d+$/.test(arg ?? '')) return viewMatch(id, Number(arg));
-  if (view === 'rangliste') return viewLeaderboard(id);
-  if (view === 'ich') return viewMe(id);
-  return viewMatches(id);
+  // Fängt auch Fehler beim Zeichnen ab: sonst bliebe die Seite für immer bei "Lädt …"
+  const guard = (tab, run) =>
+    Promise.resolve()
+      .then(run)
+      .catch((e) => {
+        console.error(e);
+        if (id === renderId) mount(shell(tab, errorBox(e, () => render())));
+      });
+  if (view === 'spiel' && /^\d+$/.test(arg ?? '')) return guard('spiele', () => viewMatch(id, Number(arg)));
+  if (view === 'rangliste') return guard('rangliste', () => viewLeaderboard(id));
+  if (view === 'tabelle') return guard('tabelle', () => viewTable(id));
+  if (view === 'ich') return guard('ich', () => viewMe(id));
+  return guard('spiele', () => viewMatches(id));
 }
 
 // ---------- Willkommen und Anmeldung ----------
@@ -572,6 +585,62 @@ async function viewMatch(id, matchId) {
 }
 
 // ---------- Rangliste ----------
+
+// ---------- Ligatabellen ----------
+
+async function viewTable(id) {
+  mount(shell('tabelle', topBar(), loading('Tabellen werden geladen …')));
+  let data = await api(`/api/tables${state.tableComp ? `?comp=${encodeURIComponent(state.tableComp)}` : ''}`);
+  if (id !== renderId) return;
+  state.tableComp = data.comp;
+
+  const groupLabel = (g) => (g ? g.replace(/^GROUP_/, 'Gruppe ').replace(/_/g, ' ') : '');
+  const signed = (n) => (n > 0 ? `+${n}` : String(n));
+
+  const choose = async (code) => {
+    state.tableComp = code;
+    try {
+      data = await api(`/api/tables?comp=${encodeURIComponent(code)}`);
+      draw();
+    } catch (e) {
+      toast(e.message);
+    }
+  };
+
+  const tableFor = (rows, name) =>
+    h('table', { class: 'league' },
+      name && h('caption', null, name),
+      h('thead', null, h('tr', null, h('th', { class: 'pos', scope: 'col' }, 'Pl.'), h('th', { class: 'team', scope: 'col' }, 'Team'), h('th', { scope: 'col' }, 'Sp.'), h('th', { class: 'goals', scope: 'col' }, 'Tore'), h('th', { scope: 'col' }, 'Diff.'), h('th', { class: 'pkt', scope: 'col' }, 'Pkt.'))),
+      h('tbody', null, rows.map((r) => h('tr', null,
+        h('td', { class: 'pos' }, r.position),
+        h('td', { class: 'team' }, h('span', { class: 'cell' }, crest({ crest: r.crest, tla: r.tla, name: r.name }, 22), h('span', { class: 'nm' }, r.name))),
+        h('td', null, r.played),
+        h('td', { class: 'goals' }, `${r.goals_for}:${r.goals_against}`),
+        h('td', null, signed(r.goals_for - r.goals_against)),
+        h('td', { class: 'pkt' }, r.points),
+      ))),
+    );
+
+  const draw = () => {
+    const groups = [];
+    for (const r of data.rows) {
+      let g = groups.find((x) => x.grp === r.grp);
+      if (!g) groups.push((g = { grp: r.grp, rows: [] }));
+      g.rows.push(r);
+    }
+    const body = data.competitions.length
+      ? h('div', { class: 'tables' }, groups.map((g) => tableFor(g.rows, groups.length > 1 ? groupLabel(g.grp) : '')))
+      : h('div', { class: 'empty' }, h('h2', null, 'Noch keine Tabellen'), h('p', null, 'Die Tabellen werden gerade geladen. Schau in ein paar Minuten noch einmal vorbei.'));
+    const chips = data.competitions.length
+      ? h('div', { class: 'chips', role: 'group', 'aria-label': 'Wettbewerb' },
+          data.competitions.map((c) => h('button', { class: 'chip', 'aria-pressed': data.comp === c.code, onclick: () => choose(c.code) }, c.emblem && h('img', { src: c.emblem, alt: '', loading: 'lazy' }), c.name)))
+      : null;
+    const y = window.scrollY;
+    mount(shell('tabelle', topBar(), h('div', { class: 'page-title' }, h('h1', null, 'Tabellen'), h('p', null, 'So stehen die Teams in den Wettbewerben deiner Gruppe.')), chips, body));
+    window.scrollTo(0, y);
+  };
+  draw();
+}
 
 async function viewLeaderboard(id) {
   const period = state.period ?? 'week';

@@ -412,6 +412,33 @@ async function putTip(request, id, db, player, now) {
   return json({ myTips: await myTipsFor(db, player.id, id) });
 }
 
+// ---------- Ligatabellen ----------
+
+async function leagueTable(url, db, player) {
+  const enabled = enabledCompetitions(await groupOf(db, player));
+  const { results: known } = await db
+    .prepare('SELECT c.code, c.name, c.emblem FROM competitions c WHERE c.code IN (SELECT DISTINCT comp FROM league_tables)')
+    .all();
+  const competitions = known
+    .filter((c) => !enabled || enabled.includes(c.code))
+    .map((c) => ({ code: c.code, name: COMP_NAMES[c.code] ?? c.name, emblem: c.emblem }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const wanted = url.searchParams.get('comp');
+  const comp = competitions.find((c) => c.code === wanted)?.code ?? competitions[0]?.code ?? null;
+  const rows = comp
+    ? (
+        await db
+          .prepare(
+            `SELECT grp, position, name, tla, crest, played, won, draw, lost, goals_for, goals_against, points
+             FROM league_tables WHERE comp = ? ORDER BY grp, position`,
+          )
+          .bind(comp)
+          .all()
+      ).results
+    : [];
+  return json({ competitions, comp, rows });
+}
+
 // ---------- Rangliste ----------
 
 async function leaderboard(url, db, player, now) {
@@ -552,6 +579,7 @@ async function route(request, env, now) {
   }
   if (path === '/api/group/settings' && method === 'GET') return groupSettings(db, player, now);
   if (path === '/api/group/settings' && method === 'POST') return saveGroupSettings(request, db, player, now);
+  if (path === '/api/tables' && method === 'GET') return leagueTable(url, db, player);
   if (path === '/api/matches' && method === 'GET') return listMatches(url, db, player, now);
   const m = /^\/api\/matches\/(\d+)$/.exec(path);
   if (m && method === 'GET') return matchDetail(Number(m[1]), db, player, now);

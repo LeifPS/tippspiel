@@ -141,10 +141,26 @@ test('runSync: ohne Token passiert nichts, mit Token läuft das Budget korrekt',
   assert.equal(r1.jobs.length, 4); // alle vier Fenster beim ersten Start
   assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM matches').get().c, 1);
 
-  // Direkt danach (gleiche Minute): nichts fällig, Budget wird nicht angefasst
+  // Danach ist der Wettbewerb bekannt: seine Tabelle wird einmal geholt, sonst ist nichts fällig
   seen.length = 0;
-  const r2 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 5, { fetchMatches });
-  assert.equal(r2.jobs.length, 0);
+  const tablesSeen = [];
+  const fetchStandings = async (_t, code) => {
+    tablesSeen.push(code);
+    return {
+      ok: true,
+      available: 8,
+      rows: [{ grp: '', team_id: 5, position: 1, name: 'Bayern', tla: 'FCB', crest: null, played: 10, won: 8, draw: 1, lost: 1, goals_for: 30, goals_against: 8, points: 25 }],
+    };
+  };
+  const r2 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 5, { fetchMatches, fetchStandings });
+  assert.deepEqual(tablesSeen, ['BL1']);
+  assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM league_tables').get().c, 1);
+  assert.equal(r2.jobs.length, 1);
+  assert.equal(seen.length, 0);
+
+  // Direkt danach (gleiche Minute): nichts fällig, Budget wird nicht angefasst
+  const r3 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 10, { fetchMatches, fetchStandings });
+  assert.equal(r3.jobs.length, 0);
   assert.equal(seen.length, 0);
 });
 
@@ -190,4 +206,24 @@ test('Fehlerhafte Antwort (z. B. 403) wird protokolliert und das Fenster erst sp
   assert.equal(r.jobs.length, 4);
   const err = db.raw.prepare("SELECT value FROM sync_state WHERE key = 'api:last_error'").get();
   assert.match(err.value, /403/);
+});
+
+test('fetchStandings liest Gesamttabelle und Gruppen, ignoriert Heim- und Auswärtstabellen', async () => {
+  const { fetchStandings } = await import('../src/footballdata.js');
+  const team = (id, name) => ({ id, name: `${name} FC`, shortName: name, tla: name.slice(0, 3).toUpperCase(), crest: `${name}.png` });
+  const row = (position, t, pts) => ({ position, team: t, playedGames: 10, won: 5, draw: 2, lost: 3, points: pts, goalsFor: 15, goalsAgainst: 9, goalDifference: 6 });
+  const body = {
+    standings: [
+      { type: 'TOTAL', group: 'GROUP_A', table: [row(1, team(1, 'Alpha'), 17), row(2, team(2, 'Beta'), 12)] },
+      { type: 'HOME', group: 'GROUP_A', table: [row(1, team(2, 'Beta'), 9)] },
+      { type: 'TOTAL', group: 'GROUP_B', table: [row(1, team(3, 'Gamma'), 20)] },
+    ],
+  };
+  const fetchImpl = async () => new Response(JSON.stringify(body), { status: 200, headers: { 'X-Requests-Available-Minute': '7' } });
+  const r = await fetchStandings('t', 'WC', fetchImpl);
+  assert.equal(r.ok, true);
+  assert.equal(r.available, 7);
+  assert.deepEqual(r.rows.map((x) => [x.grp, x.position, x.name, x.points]), [['GROUP_A', 1, 'Alpha', 17], ['GROUP_A', 2, 'Beta', 12], ['GROUP_B', 1, 'Gamma', 20]]);
+  const limited = await fetchStandings('t', 'WC', async () => new Response('', { status: 429, headers: { 'X-RequestCounter-Reset': '30' } }));
+  assert.deepEqual(limited, { ok: false, rateLimited: true, retryAfter: 30 });
 });

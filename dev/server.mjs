@@ -6,7 +6,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeD1 } from '../test/helpers/d1.js';
 import { handleApi } from '../src/api.js';
-import { settleMatches, upsertMatches } from '../src/sync.js';
+import { settleMatches, upsertMatches, upsertTable } from '../src/sync.js';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -58,6 +58,10 @@ const matches = [
 ];
 
 await upsertMatches(db, matches, now());
+// Beispiel-Tabellen für die Tabellen-Ansicht
+const tr = (position, id, name, tla, w, d, l, gf, ga) => ({ grp: '', team_id: id, position, name, tla, crest: null, played: w + d + l, won: w, draw: d, lost: l, goals_for: gf, goals_against: ga, points: w * 3 + d });
+await upsertTable(db, 'BL1', [tr(1, 5, 'Bayern', 'FCB', 9, 1, 0, 34, 6), tr(2, 4, 'Dortmund', 'BVB', 6, 2, 2, 22, 13), tr(3, 3, 'Leverkusen', 'B04', 6, 1, 3, 21, 14), tr(4, 721, 'Leipzig', 'RBL', 5, 3, 2, 18, 12)]);
+await upsertTable(db, 'PL', [tr(1, 57, 'Arsenal', 'ARS', 8, 2, 0, 24, 5), tr(2, 65, 'Man City', 'MCI', 7, 1, 2, 22, 10), tr(3, 64, 'Liverpool', 'LIV', 6, 2, 2, 20, 12), tr(4, 61, 'Chelsea', 'CHE', 4, 3, 3, 15, 14)]);
 
 const call = async (method, path, body, token) => {
   const res = await handleApi(

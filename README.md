@@ -43,6 +43,7 @@ Der Sammelendpunkt `/v4/matches` liefert alle 12 Wettbewerbe in einem Aufruf fü
 Pro Minute läuft ein Cron, der nach Dringlichkeit entscheidet:
 
 - Ergebnisfenster (gestern bis morgen): jede Minute, solange Spiele laufen; sonst alle 10 oder 60 Minuten
+- Ligatabellen (für die Ansicht "Tabellen"): pro Wettbewerb alle 6 Stunden, nach den Spielfenstern
 - Horizont: heute bis +9 Tage alle 20 Minuten, danach +9 bis +18 alle 3 Stunden, +18 bis +27 alle 6 Stunden
 - höchstens 9 von 10 Aufrufen pro Minute (1 Reserve), gezählt über ein gleitendes 60-Sekunden-Fenster
 - bei HTTP 429 wird bis zum Ablauf des Limits pausiert

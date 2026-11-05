@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeD1 } from './helpers/d1.js';
 import { handleApi } from '../src/api.js';
-import { settleMatches, upsertMatches } from '../src/sync.js';
+import { settleMatches, upsertMatches, upsertTable } from '../src/sync.js';
 
 const NOW = Date.UTC(2026, 10, 5, 12, 0) / 1000; // Donnerstag, 5. Nov 2026
 const KICKOFF = NOW + 6 * 3600;
@@ -279,4 +279,27 @@ test('Der Gründer legt fest, welche Wettbewerbe die Gruppe tippt', async () => 
   assert.equal((await call('POST', '/api/group/settings', { token: leif, body: { competitions: all } })).status, 200);
   assert.equal(db.raw.prepare('SELECT competitions c FROM groups WHERE code = ?').get(code).c, null);
   assert.equal((await call('GET', '/api/matches', { token: mia })).data.matches.length, 2);
+});
+
+test('Ligatabellen: nur Wettbewerbe der Gruppe, sortiert nach Platz', async () => {
+  const { db, call } = setup();
+  const { leif, mia } = await family(call);
+  await upsertMatches(db, [apiMatch()], NOW);
+  const r = (position, id, name, pts) => ({ grp: '', team_id: id, position, name, tla: null, crest: null, played: 10, won: 5, draw: 2, lost: 3, goals_for: 15, goals_against: 9, points: pts });
+  await upsertTable(db, 'BL1', [r(2, 4, 'Dortmund', 20), r(1, 5, 'Bayern', 28)]);
+  await db.prepare("INSERT INTO competitions (code, name) VALUES ('PL', 'Premier League')").run();
+  await upsertTable(db, 'PL', [r(1, 57, 'Arsenal', 30)]);
+
+  const all = await call('GET', '/api/tables', { token: mia });
+  assert.deepEqual(all.data.competitions.map((c) => c.code), ['BL1', 'PL']);
+  assert.equal(all.data.comp, 'BL1');
+  assert.deepEqual(all.data.rows.map((x) => [x.position, x.name]), [[1, 'Bayern'], [2, 'Dortmund']]);
+  assert.equal((await call('GET', '/api/tables?comp=PL', { token: mia })).data.rows[0].name, 'Arsenal');
+  assert.equal((await call('GET', '/api/tables?comp=XXX', { token: mia })).data.comp, 'BL1');
+
+  await call('POST', '/api/group/settings', { token: leif, body: { competitions: ['BL1'] } });
+  const only = await call('GET', '/api/tables?comp=PL', { token: mia });
+  assert.deepEqual(only.data.competitions.map((c) => c.code), ['BL1']);
+  assert.equal(only.data.comp, 'BL1');
+  assert.equal((await call('GET', '/api/tables')).status, 401);
 });

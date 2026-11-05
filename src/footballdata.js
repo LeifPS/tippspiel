@@ -21,6 +21,41 @@ export async function fetchMatches(token, { dateFrom, dateTo }, fetchImpl = fetc
   };
 }
 
+// Tabellenstand eines Wettbewerbs (Gesamttabelle, bei Gruppenphasen jede Gruppe)
+export async function fetchStandings(token, code, fetchImpl = fetch) {
+  const res = await fetchImpl(`${BASE}/competitions/${code}/standings`, { headers: { 'X-Auth-Token': token } });
+  const available = Number(res.headers.get('X-Requests-Available-Minute'));
+  if (res.status === 429) {
+    const wait = Number(res.headers.get('X-RequestCounter-Reset'));
+    return { ok: false, rateLimited: true, retryAfter: Number.isFinite(wait) && wait > 0 ? wait : 60 };
+  }
+  if (!res.ok) return { ok: false, status: res.status, error: (await res.text()).slice(0, 300) };
+  const json = await res.json();
+  const rows = [];
+  for (const st of Array.isArray(json.standings) ? json.standings : []) {
+    if (st.type && st.type !== 'TOTAL') continue;
+    for (const r of st.table ?? []) {
+      if (!r?.team?.id || typeof r.playedGames !== 'number') continue;
+      rows.push({
+        grp: st.group ?? '',
+        team_id: r.team.id,
+        position: num(r.position) ?? rows.length + 1,
+        name: r.team.shortName || r.team.name || '?',
+        tla: r.team.tla ?? null,
+        crest: r.team.crest ?? null,
+        played: r.playedGames,
+        won: num(r.won) ?? 0,
+        draw: num(r.draw) ?? 0,
+        lost: num(r.lost) ?? 0,
+        goals_for: num(r.goalsFor) ?? 0,
+        goals_against: num(r.goalsAgainst) ?? 0,
+        points: num(r.points) ?? 0,
+      });
+    }
+  }
+  return { ok: true, rows, available: Number.isFinite(available) ? available : null };
+}
+
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const pair = (p) => (p && num(p.home) !== null && num(p.away) !== null ? { home: p.home, away: p.away } : null);
 
