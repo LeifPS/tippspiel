@@ -1,16 +1,12 @@
-import { runSync, syncHealth } from './sync.js';
-
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
-  });
+import { handleApi } from './api.js';
+import { runSync } from './sync.js';
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
-    if (url.pathname === '/api/health') return json(await syncHealth(env.DB));
-    return json({ error: 'Nicht gefunden' }, 404);
+    const { pathname } = new URL(request.url);
+    if (pathname.startsWith('/api/')) return handleApi(request, env);
+    // Alles andere liefert das Asset-Binding aus (public/)
+    return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Nicht gefunden', { status: 404 });
   },
 
   async scheduled(_event, env, ctx) {
