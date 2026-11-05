@@ -106,7 +106,9 @@ test('Tippen: Märkte, Tippschluss, Sichtbarkeit der Tipps anderer', async () =>
 
   assert.equal((await put(leif, '1x2', '1')).status, 200);
   assert.equal((await put(leif, 'exact', '2:1')).data.myTips.exact.potential, 9);
-  assert.equal((await put(leif, '1x2', 'X')).data.myTips['1x2'].pick, 'X'); // ändern geht
+  const swapped = await put(leif, '1x2', 'X'); // ändern geht, und ein Tipp in einem anderen Markt ersetzt den alten
+  assert.equal(swapped.data.myTips['1x2'].pick, 'X');
+  assert.deepEqual(Object.keys(swapped.data.myTips), ['1x2']);
   assert.equal((await put(leif, '1x2', 'Q')).status, 400);
   assert.equal((await put(leif, 'gibtsnicht', '1')).status, 400);
   assert.equal((await put(mia, '1x2', '2')).status, 200);
@@ -140,10 +142,9 @@ test('Wertung, Rangliste, Münzen und Shop', async () => {
   const { leif, mia } = await family(call);
   await upsertMatches(db, [apiMatch()], NOW);
   const put = (token, market, pick) => call('PUT', '/api/matches/1001/tips', { token, body: { market, pick } });
-  await put(leif, '1x2', '1'); // 2 Punkte
+  await put(leif, '1x2', '1'); // wird ersetzt: pro Spiel zählt nur ein Tipp
   await put(leif, 'exact', '2:1'); // 9 Punkte
-  await put(leif, 'btts', 'Y'); // 2 Punkte
-  await put(mia, '1x2', 'X'); // falsch
+  await put(mia, '1x2', 'X'); // wird ersetzt
   await put(mia, 'ou25', 'O'); // 2 Punkte
 
   await upsertMatches(
@@ -154,17 +155,17 @@ test('Wertung, Rangliste, Münzen und Shop', async () => {
   assert.equal(await settleMatches(db), 1);
 
   const lb = await call('GET', '/api/leaderboard', { token: mia, now: KICKOFF + 8000 });
-  assert.deepEqual(lb.data.rows.map((r) => [r.name, r.rank, r.points, r.exact]), [['Leif', 1, 13, 1], ['Mia', 2, 2, 0]]);
+  assert.deepEqual(lb.data.rows.map((r) => [r.name, r.rank, r.points, r.exact]), [['Leif', 1, 9, 1], ['Mia', 2, 2, 0]]);
   assert.equal(lb.data.rows[1].me, true);
   assert.equal(lb.data.rows[0].hitRate, 100);
   const week = await call('GET', '/api/leaderboard?period=week', { token: mia, now: KICKOFF + 8000 });
-  assert.equal(week.data.rows[0].points, 13);
+  assert.equal(week.data.rows[0].points, 9);
   const nextWeek = await call('GET', '/api/leaderboard?period=week', { token: mia, now: KICKOFF + 8 * 86400 });
   assert.equal(nextWeek.data.rows[0].points, 0);
 
   // Münzen = gewonnene Punkte minus Ausgaben
   const me = await call('GET', '/api/me', { token: leif });
-  assert.equal(me.data.coins, 13);
+  assert.equal(me.data.coins, 9);
   assert.equal(me.data.level.level, 1);
 
   // Mia hat nur 2 Münzen: der Kauf scheitert
@@ -178,7 +179,7 @@ test('Wertung, Rangliste, Münzen und Shop', async () => {
   await db.prepare("UPDATE tips SET points = 100 WHERE player_id = 1 AND market = 'exact'").run();
   const bought = await call('POST', '/api/shop/buy', { token: leif, body: { item: 'a1' } });
   assert.equal(bought.status, 200);
-  assert.equal(bought.data.coins, 64); // 104 Punkte minus 40 für das Stirnband
+  assert.equal(bought.data.coins, 60); // 100 Punkte minus 40 für das Stirnband
   assert.deepEqual(bought.data.owned, ['a1']);
   assert.equal((await call('POST', '/api/shop/buy', { token: leif, body: { item: 'a1' } })).status, 409);
 
@@ -190,7 +191,7 @@ test('Wertung, Rangliste, Münzen und Shop', async () => {
   assert.equal((await call('POST', '/api/profile', { token: leif, body: { frame: 'f4' } })).status, 400);
   assert.equal((await call('POST', '/api/profile', { token: leif, body: { frame: 'f1' } })).status, 200);
 
-  // Titel: "Stammtipper" braucht 100 Punkte (Leif hat jetzt 104)
+  // Titel: "Stammtipper" braucht 100 Punkte (Leif hat jetzt 100)
   assert.equal((await call('POST', '/api/profile', { token: leif, body: { title: 'regular' } })).data.player.title, 'regular');
   assert.equal((await call('POST', '/api/profile', { token: leif, body: { title: 'legend' } })).status, 400);
   assert.equal((await call('POST', '/api/profile', { token: mia, body: { title: 'regular' } })).status, 400);

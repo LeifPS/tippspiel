@@ -342,3 +342,6 @@ details.group[open] > summary .icon { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.tipnote { padding: 12px 16px; background: var(--papier); border-bottom: 1px solid var(--linie); font-size: 14px; }
+.tipnote p { margin: 0; }

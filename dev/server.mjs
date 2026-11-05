@@ -92,7 +92,7 @@ await tips(a.token, 5005, [['btts', 'Y']]);
 
 await writeFile(join(ROOT, '..', 'dev', 'tokens.json'), JSON.stringify({ code, leif: a.token, mia: b.token, tom: c.token, openMatch: 5004, doneMatch: 5000, liveMatch: 5003 }, null, 2));
 
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');

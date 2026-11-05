@@ -33,7 +33,7 @@ log('Anmeldung mit richtiger PIN');
 // 2. Tippen: Spiel öffnen, Option wählen, wieder abwählen, Ergebnis speichern
 await page.click('.fixture:has-text("Arsenal")');
 await page.waitForSelector('.picks.three');
-const draw = page.locator('.picks.three .pick', { hasText: 'Unentschieden' });
+const draw = page.locator('.picks.three .pick', { hasText: 'Remis' });
 await draw.click();
 await page.waitForFunction(() => document.querySelector('.picks.three .pick[aria-pressed="true"]'));
 await page.screenshot({ path: `${out}/f2-tipp.png` });
@@ -51,6 +51,14 @@ await page.click('.led .col:first-child .step:first-child');
 await page.click('.led-foot .btn:has-text("Speichern")');
 await page.waitForSelector('.led-foot .info:has-text("Gespeichert")');
 log('Genaues Ergebnis speichern');
+
+// Pro Spiel zählt ein Tipp: ein Tipp in einem anderen Markt ersetzt das gespeicherte Ergebnis
+await page.waitForSelector('.picks.three', { state: 'attached' });
+if (!(await page.locator('.picks.three').isVisible())) await page.click('details.group:has(summary:has-text("Klassisch")) summary');
+await page.locator('.picks.three .pick').first().click();
+await page.waitForSelector('.tipnote:has-text("Dein Tipp: Spielausgang")');
+assert.equal(await page.locator('.led-foot .info:has-text("Gespeichert")').count(), 0);
+log('Ein Tipp pro Spiel: neuer Tipp ersetzt den alten');
 
 // 3. Liste zeigt Tippzahl
 await page.click('.back');

@@ -429,6 +429,17 @@ async function viewMatch(id, matchId) {
     return { h: hh, a: aa };
   })();
   const sectionsEl = h('div', { class: 'section' });
+  const tipNote = h('div', { class: 'tipnote' });
+  const drawTipNote = () => {
+    const mk = data.markets.find((x) => data.myTips[x.id]);
+    const tip = mk && data.myTips[mk.id];
+    const pickLabel = mk ? (mk.kind === 'score' ? tip.pick.replace(':', ' : ') : (mk.options.find((o) => o.id === tip.pick)?.label ?? tip.pick)) : '';
+    tipNote.replaceChildren(
+      mk
+        ? h('p', null, h('b', null, 'Dein Tipp: '), `${mk.label}, ${pickLabel}`, m.locked ? '' : '. Ein Tipp in einem anderen Markt ersetzt ihn.')
+        : h('p', null, m.locked ? 'Du hast bei diesem Spiel nicht getippt.' : 'Pro Spiel zählt ein Tipp. Such dir den Markt aus, bei dem du dir am sichersten bist.'),
+    );
+  };
 
   const setPick = async (market, pick) => {
     if (m.locked) return;
@@ -498,6 +509,7 @@ async function viewMatch(id, matchId) {
   }
 
   function drawSections() {
+    drawTipNote();
     const groups = [];
     for (const mk of data.markets) {
       let g = groups.find((x) => x.name === mk.group);
@@ -553,6 +565,7 @@ async function viewMatch(id, matchId) {
       ),
       note && h('div', { class: 'locknote' }, note),
     ),
+    tipNote,
     sectionsEl,
     others,
   ));

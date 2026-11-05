@@ -326,14 +326,17 @@ async function putTip(request, id, db, player, now) {
   } else {
     const pick = String(body.pick ?? '');
     if (!isValidPick(market, pick)) throw new HttpError(400, 'Ungültiger Tipp');
-    await db
-      .prepare(
-        `INSERT INTO tips (player_id, match_id, market, pick, potential, created_at) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(player_id, match_id, market) DO UPDATE SET
-           pick = excluded.pick, potential = excluded.potential, created_at = excluded.created_at`,
-      )
-      .bind(player.id, id, market, pick, pointsFor(market, pick), now)
-      .run();
+    // Pro Spiel zählt genau ein Tipp: ein Tipp in einem anderen Markt ersetzt den bisherigen
+    await db.batch([
+      db.prepare('DELETE FROM tips WHERE player_id = ? AND match_id = ? AND market != ?').bind(player.id, id, market),
+      db
+        .prepare(
+          `INSERT INTO tips (player_id, match_id, market, pick, potential, created_at) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(player_id, match_id, market) DO UPDATE SET
+             pick = excluded.pick, potential = excluded.potential, created_at = excluded.created_at`,
+        )
+        .bind(player.id, id, market, pick, pointsFor(market, pick), now),
+    ]);
   }
   return json({ myTips: await myTipsFor(db, player.id, id) });
 }
