@@ -6,7 +6,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeD1 } from '../test/helpers/d1.js';
 import { handleApi } from '../src/api.js';
-import { settleMatches, upsertMatches, upsertStandings } from '../src/sync.js';
+import { settleMatches, upsertMatches } from '../src/sync.js';
 
 const ROOT = fileURLToPath(new URL('../public/', import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -58,10 +58,6 @@ const matches = [
 ];
 
 await upsertMatches(db, matches, now());
-// Beispiel-Tabellen, damit die Punkte nach Teamstärke sichtbar werden
-const st = (id, played, gf, ga) => ({ team_id: id, played, goals_for: gf, goals_against: ga, points: 0 });
-await upsertStandings(db, 'BL1', [st(5, 10, 32, 8), st(4, 10, 20, 14), st(721, 10, 18, 12), st(3, 10, 22, 12)]);
-await upsertStandings(db, 'PL', [st(57, 10, 24, 7), st(61, 10, 15, 14), st(64, 10, 20, 12), st(65, 10, 22, 11)]);
 
 const call = async (method, path, body, token) => {
   const res = await handleApi(

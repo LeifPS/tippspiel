@@ -1,5 +1,4 @@
 import { describeMarkets, isValidPick, marketById, pointsFor } from './markets.js';
-import { loadOdds } from './odds.js';
 import { FREE_COMPETITIONS } from './footballdata.js';
 import {
   hashPin, LOCK_SECONDS, MAX_FAILS, NAME_RE, newGroupCode, newSalt, newToken, PIN_RE, sha256,
@@ -372,10 +371,9 @@ async function matchDetail(id, db, player, now) {
     others = [...byPlayer.values()];
   }
 
-  const odds = await loadOdds(db, row);
   return json({
-    match: { ...match, pointsMode: odds ? 'form' : 'fixed' },
-    markets: describeMarkets({ home_name: row.home_name, away_name: row.away_name }, odds),
+    match,
+    markets: describeMarkets({ home_name: row.home_name, away_name: row.away_name }),
     myTips: await myTipsFor(db, player.id, id),
     group: { members, tippers, others },
   });
@@ -399,7 +397,6 @@ async function putTip(request, id, db, player, now) {
   } else {
     const pick = String(body.pick ?? '');
     if (!isValidPick(market, pick)) throw new HttpError(400, 'Ungültiger Tipp');
-    const odds = await loadOdds(db, match);
     // Pro Spiel zählt genau ein Tipp: ein Tipp in einem anderen Markt ersetzt den bisherigen
     await db.batch([
       db.prepare('DELETE FROM tips WHERE player_id = ? AND match_id = ? AND market != ?').bind(player.id, id, market),
@@ -409,7 +406,7 @@ async function putTip(request, id, db, player, now) {
            ON CONFLICT(player_id, match_id, market) DO UPDATE SET
              pick = excluded.pick, potential = excluded.potential, created_at = excluded.created_at`,
         )
-        .bind(player.id, id, market, pick, pointsFor(market, pick, odds), now),
+        .bind(player.id, id, market, pick, pointsFor(market, pick), now),
     ]);
   }
   return json({ myTips: await myTipsFor(db, player.id, id) });

@@ -71,3 +71,15 @@ test('Beschriftungen setzen die Teamnamen ein', () => {
   assert.ok(!JSON.stringify(d).includes('{h}'));
   assert.ok(!JSON.stringify(d).includes('{a}'));
 });
+
+test('Heim und Gast bringen in jedem Markt gleich viele Punkte', () => {
+  const pts = (m, id) => MARKETS.find((x) => x.id === m).options.find((o) => o.id === id).points;
+  assert.equal(pts('1x2', '1'), pts('1x2', '2'));
+  assert.equal(pts('hcp_home', 'H2'), pts('hcp_away', 'A2'));
+  assert.equal(pts('hcp_home', 'H1'), pts('hcp_away', 'A1'));
+  assert.equal(pts('hcp_home', 'HN'), pts('hcp_away', 'AN'));
+  assert.equal(pts('dc', '1X'), pts('dc', 'X2'));
+  assert.equal(pts('win_ou25', '1O'), pts('win_ou25', '2O'));
+  assert.equal(pts('win_ou25', '1U'), pts('win_ou25', '2U'));
+  assert.ok(pts('1x2', 'X') > pts('1x2', '1'), 'das seltenere Remis bringt mehr');
+});

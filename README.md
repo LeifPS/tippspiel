@@ -18,16 +18,21 @@ Jeder tippt auf dem eigenen Handy, es gibt eine gemeinsame Rangliste, Münzen, A
 
 | Markt | Optionen (Punkte) |
 | --- | --- |
-| Spielausgang | Heim 2, Remis 4, Gast 3 |
-| Doppelte Chance | Heim/Remis 1, Heim/Gast 1, Remis/Gast 2 |
-| Handicap Heim −1 | 2+ Tore Vorsprung 4, genau 1 Tor 4, gewinnt nicht 2 |
-| Handicap Gast −1 | 2+ Tore Vorsprung 5, genau 1 Tor 4, gewinnt nicht 1 |
+| Spielausgang | Heim 3, Remis 4, Gast 3 |
+| Doppelte Chance | Heim/Remis 2, Heim/Gast 1, Remis/Gast 2 |
+| Handicap Heim −1 | 2+ Tore Vorsprung 5, genau 1 Tor 5, gewinnt nicht 2 |
+| Handicap Gast −1 | 2+ Tore Vorsprung 5, genau 1 Tor 5, gewinnt nicht 2 |
 | Über/Unter 1,5 | Über 1, Unter 4 |
 | Über/Unter 2,5 | Über 2, Unter 2 |
 | Über/Unter 3,5 | Über 3, Unter 1 |
 | Treffen beide Teams | Ja 2, Nein 2 |
-| Sieger & Über/Unter 2,5 | zwischen 4 und 8 Punkte |
+| Sieger & Über/Unter 2,5 | Sieg & Über 5, Sieg & Unter 6, Remis & Über 12, Remis & Unter 5 |
 | Genaues Ergebnis | häufige Ergebnisse 9, seltene 13, sehr seltene 20 |
+
+Die Punkte sind für alle Spiele gleich, egal welche Teams spielen: Es geht darum zu wissen, wer gewinnt, nicht darum,
+Quoten zu schätzen. Heim und Gast bringen immer gleich viele Punkte. Seltenere Ausgänge (Remis, genaue Ergebnisse) bringen mehr.
+Pro Spiel zählt ein Tipp: ein Tipp in einem anderen Markt ersetzt den bisherigen.
+Der Gründer einer Gruppe stellt unter "Ich" ein, welche Wettbewerbe in der Gruppe getippt werden.
 
 Die Zahlen stehen in `src/markets.js` und lassen sich dort ändern. Verlängerung und Elfmeterschießen zählen nicht;
 liefert die API die reguläre Spielzeit nicht getrennt, werden die Tipps dieses Spiels nicht gewertet (ohne Punkteabzug).

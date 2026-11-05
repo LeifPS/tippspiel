@@ -405,7 +405,9 @@ async function viewMatches(id) {
 
 // ---------- Spiel-Detail ----------
 
-const exactPts = (key, table) => table[key] ?? 0;
+const COMMON = new Set(['1:0', '0:1', '1:1', '2:1', '1:2', '2:0', '0:2']);
+const RARE = new Set(['0:0', '2:2', '3:0', '0:3', '3:1', '1:3', '3:2', '2:3']);
+const exactPts = (key, t) => (COMMON.has(key) ? t.common : RARE.has(key) ? t.rare : t.veryRare);
 
 async function viewMatch(id, matchId) {
   mount(shell('spiele', h('div', { class: 'hero' }, h('button', { class: 'back', onclick: () => { location.hash = '#/spiele'; } }, icon('back', 20), 'Spiele')), loading()));
@@ -436,7 +438,6 @@ async function viewMatch(id, matchId) {
       mk
         ? h('p', null, h('b', null, 'Dein Tipp: '), `${mk.label}, ${pickLabel}`, m.locked ? '' : '. Ein Tipp in einem anderen Markt ersetzt ihn.')
         : h('p', null, m.locked ? 'Du hast bei diesem Spiel nicht getippt.' : 'Pro Spiel zählt ein Tipp. Such dir den Markt aus, bei dem du dir am sichersten bist.'),
-      !m.locked && m.pointsMode === 'form' ? h('p', { class: 'muted' }, 'Die Punkte richten sich nach der Tabelle: Wer als Favorit gilt, bringt weniger, ein Außenseiter mehr.') : null,
     );
   };
 
@@ -466,7 +467,7 @@ async function viewMatch(id, matchId) {
             h('span', { class: 'label' }, o.label, mine && m.locked && resultText(tip) ? h('div', { class: 'res' }, resultText(tip)) : null),
             h('span', { class: 'foot' },
               mine && !m.locked ? icon('check', 20) : null,
-              h('span', { class: `pts ${mine && tip.status === 'won' ? 'won' : ''}` }, mine && tip.potential ? tip.potential : o.points)),
+              h('span', { class: `pts ${mine && tip.status === 'won' ? 'won' : ''}` }, o.points)),
           );
         }),
       ),
@@ -486,7 +487,7 @@ async function viewMatch(id, matchId) {
         h('div', { class: 'who' }, label),
       );
     };
-    const pts = exactPts(key, mk.exactTable);
+    const pts = exactPts(key, mk.exactPoints);
     const foot = [];
     if (m.locked) {
       foot.push(h('div', { class: 'info' }, saved ? [h('span', { class: `pts ${tip.status === 'won' ? 'won' : tip.status === 'lost' || tip.status === 'void' ? 'off' : ''}` }, tip.status === 'won' ? `+${tip.points}` : tip.potential), h('span', null, resultText(tip) ?? 'Dein Tipp zählt nach dem Abpfiff')] : h('span', null, 'Du hast kein Ergebnis getippt.')));

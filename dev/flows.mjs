@@ -98,7 +98,7 @@ await p2.waitForSelector('.sheet');
 await p2.screenshot({ path: `${out}/f3-kaufen.png` });
 await p2.click('.sheet .btn:has-text("kaufen")');
 await p2.waitForSelector('.item:has-text("Stirnband")[aria-pressed="true"]');
-assert.equal(await p2.textContent('.fact:nth-child(2) b'), '86'); // 126 Münzen minus 40 fürs Stirnband
+assert.equal(await p2.textContent('.fact:nth-child(2) b'), '87'); // 127 Münzen minus 40 fürs Stirnband
 log('Kauf mit Bestätigung');
 
 // 7. Gründer stellt die Wettbewerbe ein: ohne Premier League verschwindet das Arsenal-Spiel

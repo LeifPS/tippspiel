@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeD1 } from './helpers/d1.js';
 import { handleApi } from '../src/api.js';
-import { settleMatches, upsertMatches, upsertStandings } from '../src/sync.js';
+import { settleMatches, upsertMatches } from '../src/sync.js';
 
 const NOW = Date.UTC(2026, 10, 5, 12, 0) / 1000; // Donnerstag, 5. Nov 2026
 const KICKOFF = NOW + 6 * 3600;
@@ -221,40 +221,6 @@ test('Abmelden macht den Token ungültig', async () => {
   assert.equal((await call('GET', '/api/me', { token: leif })).status, 200);
   await call('POST', '/api/logout', { token: leif });
   assert.equal((await call('GET', '/api/me', { token: leif })).status, 401);
-});
-
-test('Punkte nach Teamstärke: Außenseiter bringt mehr, gewertet wird mit den beim Tippen gezeigten Punkten', async () => {
-  const { db, call } = setup();
-  const { leif, mia } = await family(call);
-  await upsertMatches(db, [apiMatch()], NOW);
-
-  // Ohne Tabellenstand gelten die festen Punkte
-  const fixed = await call('GET', '/api/matches/1001', { token: leif });
-  assert.equal(fixed.data.match.pointsMode, 'fixed');
-  assert.equal(fixed.data.markets.find((m) => m.id === '1x2').options.find((o) => o.id === '2').points, 3);
-
-  // Bayern (id 5) stark, Dortmund (id 4) schwach
-  await upsertStandings(db, 'BL1', [
-    { team_id: 5, played: 10, goals_for: 30, goals_against: 8, points: 28 },
-    { team_id: 4, played: 10, goals_for: 9, goals_against: 25, points: 8 },
-    { team_id: 7, played: 10, goals_for: 15, goals_against: 15, points: 15 },
-  ]);
-  const d = await call('GET', '/api/matches/1001', { token: leif });
-  assert.equal(d.data.match.pointsMode, 'form');
-  const pts = Object.fromEntries(d.data.markets.find((m) => m.id === '1x2').options.map((o) => [o.id, o.points]));
-  assert.ok(pts['1'] < pts['2'], `Favorit ${pts['1']} muss weniger bringen als Außenseiter ${pts['2']}`);
-  assert.equal(d.data.markets.find((m) => m.id === 'exact').exactTable['2:0'] > 0, true);
-
-  const put = (token, market, pick) => call('PUT', '/api/matches/1001/tips', { token, body: { market, pick } });
-  assert.equal((await put(leif, '1x2', '1')).data.myTips['1x2'].potential, pts['1']);
-  assert.equal((await put(mia, '1x2', '2')).data.myTips['1x2'].potential, pts['2']);
-
-  // Der Tabellenstand ändert sich nach dem Tippen: die Wertung nutzt trotzdem die damals gezeigten Punkte
-  await upsertStandings(db, 'BL1', [{ team_id: 5, played: 11, goals_for: 30, goals_against: 20, points: 28 }]);
-  await upsertMatches(db, [apiMatch({ status: 'FINISHED', score: { duration: 'REGULAR', fullTime: { home: 0, away: 1 } } })], KICKOFF + 7200);
-  await settleMatches(db);
-  const lb = await call('GET', '/api/leaderboard', { token: mia, now: KICKOFF + 8000 });
-  assert.deepEqual(lb.data.rows.map((r) => [r.name, r.points]), [['Mia', pts['2']], ['Leif', 0]]);
 });
 
 test('Der Gründer legt fest, welche Wettbewerbe die Gruppe tippt', async () => {

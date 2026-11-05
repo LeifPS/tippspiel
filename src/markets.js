@@ -14,7 +14,7 @@ export const MARKETS = [
     group: 'Klassisch',
     label: 'Spielausgang',
     hint: 'Wer liegt nach 90 Minuten vorn?',
-    options: [opt('1', '{h}', 2), opt('X', 'Remis', 4), opt('2', '{a}', 3)],
+    options: [opt('1', '{h}', 3), opt('X', 'Remis', 4), opt('2', '{a}', 3)],
     wins: (h, a) => [sign(h, a)],
   },
   {
@@ -22,7 +22,7 @@ export const MARKETS = [
     group: 'Klassisch',
     label: 'Doppelte Chance',
     hint: 'Zwei von drei Ausgängen zählen',
-    options: [opt('1X', '{h} oder Remis', 1), opt('12', '{h} oder {a}', 1), opt('X2', 'Remis oder {a}', 2)],
+    options: [opt('1X', '{h} oder Remis', 2), opt('12', '{h} oder {a}', 1), opt('X2', 'Remis oder {a}', 2)],
     wins: (h, a) => (h > a ? ['1X', '12'] : h < a ? ['12', 'X2'] : ['1X', 'X2']),
   },
   {
@@ -31,8 +31,8 @@ export const MARKETS = [
     label: 'Handicap {h} −1',
     hint: '{h} startet mit einem Tor Rückstand',
     options: [
-      opt('H2', '{h} gewinnt mit 2+ Toren', 4),
-      opt('H1', '{h} gewinnt mit genau 1 Tor', 4),
+      opt('H2', '{h} gewinnt mit 2+ Toren', 5),
+      opt('H1', '{h} gewinnt mit genau 1 Tor', 5),
       opt('HN', '{h} gewinnt nicht', 2),
     ],
     wins: (h, a) => (h - a >= 2 ? ['H2'] : h - a === 1 ? ['H1'] : ['HN']),
@@ -44,8 +44,8 @@ export const MARKETS = [
     hint: '{a} startet mit einem Tor Rückstand',
     options: [
       opt('A2', '{a} gewinnt mit 2+ Toren', 5),
-      opt('A1', '{a} gewinnt mit genau 1 Tor', 4),
-      opt('AN', '{a} gewinnt nicht', 1),
+      opt('A1', '{a} gewinnt mit genau 1 Tor', 5),
+      opt('AN', '{a} gewinnt nicht', 2),
     ],
     wins: (h, a) => (a - h >= 2 ? ['A2'] : a - h === 1 ? ['A1'] : ['AN']),
   },
@@ -87,12 +87,12 @@ export const MARKETS = [
     label: 'Sieger & Über/Unter 2,5',
     hint: 'Beide Teile müssen stimmen',
     options: [
-      opt('1O', '{h} & Über 2,5', 4),
-      opt('1U', '{h} & Unter 2,5', 4),
-      opt('XO', 'Remis & Über 2,5', 8),
+      opt('1O', '{h} & Über 2,5', 5),
+      opt('1U', '{h} & Unter 2,5', 6),
+      opt('XO', 'Remis & Über 2,5', 12),
       opt('XU', 'Remis & Unter 2,5', 5),
-      opt('2O', '{a} & Über 2,5', 6),
-      opt('2U', '{a} & Unter 2,5', 7),
+      opt('2O', '{a} & Über 2,5', 5),
+      opt('2U', '{a} & Unter 2,5', 6),
     ],
     wins: (h, a) => [`${sign(h, a)}${h + a >= 3 ? 'O' : 'U'}`],
   },
@@ -122,17 +122,15 @@ export function isValidPick(marketId, pick) {
   return m.options.some((o) => o.id === pick);
 }
 
-// odds (optional): berechnete Punkte für ein Spiel, siehe odds.js. Ohne odds gelten die festen Punkte.
-export function pointsFor(marketId, pick, odds = null) {
+export function pointsFor(marketId, pick) {
   const m = marketById(marketId);
   if (!m || !isValidPick(marketId, pick)) return 0;
   if (m.kind === 'score') {
-    if (odds?.exact?.[pick] != null) return odds.exact[pick];
     if (EXACT_COMMON.has(pick)) return EXACT_POINTS.common;
     if (EXACT_RARE.has(pick)) return EXACT_POINTS.rare;
     return EXACT_POINTS.veryRare;
   }
-  return odds?.options?.[marketId]?.[pick] ?? m.options.find((o) => o.id === pick).points;
+  return m.options.find((o) => o.id === pick).points;
 }
 
 // Wertet einen Tipp gegen das 90-Minuten-Ergebnis aus
@@ -143,25 +141,18 @@ export function evaluate(marketId, pick, home, away) {
   return { won, points: won ? pointsFor(marketId, pick) : 0 };
 }
 
-// Punkte für jeden Endstand 0:0 bis 9:9
-function exactTable(odds) {
-  const table = {};
-  for (let h = 0; h <= 9; h++) for (let a = 0; a <= 9; a++) table[`${h}:${a}`] = pointsFor('exact', `${h}:${a}`, odds);
-  return table;
-}
-
 const fill = (text, match) =>
   text.replaceAll('{h}', match.home_name ?? match.home ?? 'Heim').replaceAll('{a}', match.away_name ?? match.away ?? 'Gast');
 
 // Märkte für die Oberfläche, Teamnamen sind bereits eingesetzt
-export function describeMarkets(match, odds = null) {
+export function describeMarkets(match) {
   return MARKETS.map((m) => ({
     id: m.id,
     group: m.group,
     kind: m.kind ?? 'choice',
     label: fill(m.label, match),
     hint: fill(m.hint, match),
-    options: m.options.map((o) => ({ id: o.id, label: fill(o.label, match), points: odds?.options?.[m.id]?.[o.id] ?? o.points })),
-    ...(m.kind === 'score' ? { exactTable: exactTable(odds) } : {}),
+    options: m.options.map((o) => ({ id: o.id, label: fill(o.label, match), points: o.points })),
+    ...(m.kind === 'score' ? { exactPoints: EXACT_POINTS } : {}),
   }));
 }

@@ -84,7 +84,7 @@ test('Wertung: Endstand 2:1 vergibt Punkte, Verlierer-Tipps null', async () => {
   await upsertMatches(db, [finished(2, 1)], NOW + 1);
   assert.equal(await settleMatches(db), 1);
   const rows = await tipRows(db);
-  assert.deepEqual(rows.find((r) => r.market === '1x2'), { market: '1x2', status: 'won', points: 2 });
+  assert.deepEqual(rows.find((r) => r.market === '1x2'), { market: '1x2', status: 'won', points: 3 });
   assert.deepEqual(rows.find((r) => r.market === 'exact'), { market: 'exact', status: 'won', points: 9 });
   assert.deepEqual(rows.find((r) => r.market === 'btts'), { market: 'btts', status: 'lost', points: 0 });
   assert.equal(await settleMatches(db), 0); // nicht doppelt werten
@@ -141,21 +141,10 @@ test('runSync: ohne Token passiert nichts, mit Token läuft das Budget korrekt',
   assert.equal(r1.jobs.length, 4); // alle vier Fenster beim ersten Start
   assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM matches').get().c, 1);
 
-  // Danach ist der Wettbewerb bekannt: sein Tabellenstand wird einmal geholt, sonst ist nichts fällig
+  // Direkt danach (gleiche Minute): nichts fällig, Budget wird nicht angefasst
   seen.length = 0;
-  const standingsSeen = [];
-  const fetchStandings = async (_t, code) => {
-    standingsSeen.push(code);
-    return { ok: true, rows: [{ team_id: 10, played: 10, goals_for: 20, goals_against: 8, points: 24 }], available: 8 };
-  };
-  const r2 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 5, { fetchMatches, fetchStandings });
-  assert.deepEqual(standingsSeen, ['BL1']);
-  assert.equal(db.raw.prepare('SELECT COUNT(*) c FROM standings').get().c, 1);
-  assert.equal(r2.jobs.length, 1);
-  assert.equal(seen.length, 0);
-
-  const r3 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 10, { fetchMatches, fetchStandings });
-  assert.equal(r3.jobs.length, 0);
+  const r2 = await runSync({ DB: db, FOOTBALL_DATA_TOKEN: 'x' }, NOW + 5, { fetchMatches });
+  assert.equal(r2.jobs.length, 0);
   assert.equal(seen.length, 0);
 });
 
