@@ -34,7 +34,11 @@ export function regularTimeGoals(score) {
   return null;
 }
 
+// Die 12 Wettbewerbe des kostenlosen Tarifs; der Sammelaufruf kann weitere liefern
+export const FREE_COMPETITIONS = new Set(['WC', 'CL', 'BL1', 'DED', 'BSA', 'PD', 'FL1', 'ELC', 'PPL', 'EC', 'SA', 'PL']);
+
 export function normalizeMatch(m, now = Math.floor(Date.now() / 1000)) {
+  if (m?.competition?.code && !FREE_COMPETITIONS.has(m.competition.code)) return null;
   if (!m?.id || !m.homeTeam?.id || !m.awayTeam?.id || !m.utcDate) return null;
   const kickoff = Math.floor(Date.parse(m.utcDate) / 1000);
   if (!Number.isFinite(kickoff)) return null;
