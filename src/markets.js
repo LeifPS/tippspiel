@@ -1,5 +1,7 @@
 // Tippmärkte. Alle Wertungen beziehen sich auf die reguläre Spielzeit (90 Minuten).
 // Jede Option hat ihre eigene feste Punktzahl: seltenere Ausgänge bringen mehr Punkte.
+// Regeln (siehe test/markets.test.js): Kein Tipp darf "nur besser" sein als ein anderer. Gewinnt ein Tipp immer mit,
+// sobald ein anderer gewinnt, muss der andere mehr Punkte bringen. Zwei Tipps mit genau demselben Ergebnis gibt es nicht.
 
 const EXACT_COMMON = new Set(['1:0', '0:1', '1:1', '2:1', '1:2', '2:0', '0:2']);
 const EXACT_RARE = new Set(['0:0', '2:2', '3:0', '0:3', '3:1', '1:3', '3:2', '2:3']);
@@ -33,9 +35,8 @@ export const MARKETS = [
     options: [
       opt('H2', '{h} gewinnt mit 2+ Toren', 5),
       opt('H1', '{h} gewinnt mit genau 1 Tor', 5),
-      opt('HN', '{h} gewinnt nicht', 2),
     ],
-    wins: (h, a) => (h - a >= 2 ? ['H2'] : h - a === 1 ? ['H1'] : ['HN']),
+    wins: (h, a) => (h - a >= 2 ? ['H2'] : h - a === 1 ? ['H1'] : []),
   },
   {
     id: 'hcp_away',
@@ -45,9 +46,8 @@ export const MARKETS = [
     options: [
       opt('A2', '{a} gewinnt mit 2+ Toren', 5),
       opt('A1', '{a} gewinnt mit genau 1 Tor', 5),
-      opt('AN', '{a} gewinnt nicht', 2),
     ],
-    wins: (h, a) => (a - h >= 2 ? ['A2'] : a - h === 1 ? ['A1'] : ['AN']),
+    wins: (h, a) => (a - h >= 2 ? ['A2'] : a - h === 1 ? ['A1'] : []),
   },
   {
     id: 'ou15',

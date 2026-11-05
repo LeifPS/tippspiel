@@ -20,8 +20,8 @@ Jeder tippt auf dem eigenen Handy, es gibt eine gemeinsame Rangliste, Münzen, A
 | --- | --- |
 | Spielausgang | Heim 3, Remis 4, Gast 3 |
 | Doppelte Chance | Heim/Remis 2, Heim/Gast 1, Remis/Gast 2 |
-| Handicap Heim −1 | 2+ Tore Vorsprung 5, genau 1 Tor 5, gewinnt nicht 2 |
-| Handicap Gast −1 | 2+ Tore Vorsprung 5, genau 1 Tor 5, gewinnt nicht 2 |
+| Handicap Heim −1 | 2+ Tore Vorsprung 5, genau 1 Tor 5 |
+| Handicap Gast −1 | 2+ Tore Vorsprung 5, genau 1 Tor 5 |
 | Über/Unter 1,5 | Über 1, Unter 4 |
 | Über/Unter 2,5 | Über 2, Unter 2 |
 | Über/Unter 3,5 | Über 3, Unter 1 |
@@ -31,6 +31,8 @@ Jeder tippt auf dem eigenen Handy, es gibt eine gemeinsame Rangliste, Münzen, A
 
 Die Punkte sind für alle Spiele gleich, egal welche Teams spielen: Es geht darum zu wissen, wer gewinnt, nicht darum,
 Quoten zu schätzen. Heim und Gast bringen immer gleich viele Punkte. Seltenere Ausgänge (Remis, genaue Ergebnisse) bringen mehr.
+Kein Tipp ist "nur besser" als ein anderer: Gewinnt ein Tipp immer mit, sobald ein anderer gewinnt, bringt der andere mehr Punkte,
+und es gibt keine zwei Tipps mit genau demselben Ergebnis. Ein Test in `test/markets.test.js` prüft das bei jeder Änderung der Punkte.
 Pro Spiel zählt ein Tipp: ein Tipp in einem anderen Markt ersetzt den bisherigen.
 Der Gründer einer Gruppe stellt unter "Ich" ein, welche Wettbewerbe in der Gruppe getippt werden.
 
