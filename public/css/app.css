@@ -241,15 +241,26 @@ details.group[open] > summary .icon { transform: rotate(180deg); }
 /* ---------- Rangliste ---------- */
 
 .rank-row {
-  display: grid; grid-template-columns: 34px 52px 1fr auto; gap: 12px; align-items: center; padding: 12px 16px;
+  display: grid; grid-template-columns: 40px 44px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 12px 16px;
   background: var(--papier); border-bottom: 1px solid var(--linie-2);
 }
 .rank-row.me { background: var(--gruen-hell); }
-.rank-row .rank { font-stretch: 70%; font-weight: 850; font-size: 28px; text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); }
-.rank-row.first .rank { color: var(--tinte); }
-.rank-row .nm { font-weight: 750; line-height: 1.2; }
+.rank-row .rank { display: grid; justify-items: center; gap: 2px; }
+.rank-row .rank .n { font-stretch: 70%; font-weight: 850; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; color: var(--muted); }
+.rank-row.first .rank .n { color: var(--tinte); }
+.chg { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: var(--muted); }
+.chg .icon { display: inline-flex; }
+.chg.up { color: var(--gruen); }
+.chg.down { color: var(--rot); }
+.chg.new { font-weight: 600; }
+.chg .dash { display: block; width: 9px; height: 2px; border-radius: 1px; background: currentColor; opacity: 0.7; }
+.rank-row .nm { font-weight: 750; line-height: 1.2; overflow-wrap: anywhere; }
 .rank-row .sub { font-size: 13px; color: var(--muted); }
-.rank-row .score { font-stretch: 70%; font-weight: 850; font-size: 34px; line-height: 1; text-align: right; font-variant-numeric: tabular-nums; }
+.recent { display: flex; gap: 4px; }
+.form { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 4px; border-radius: 8px; font-size: 13px; font-weight: 750; font-variant-numeric: tabular-nums; background: var(--linie-2); color: var(--muted); }
+.form.plus { background: var(--gruen); color: #fff; }
+.form.empty { background: transparent; border: 1.5px dashed var(--linie); }
+.rank-row .score { min-width: 44px; font-stretch: 70%; font-weight: 850; font-size: 32px; line-height: 1; text-align: right; font-variant-numeric: tabular-nums; }
 .rank-row .score small { display: block; font-stretch: 100%; font-weight: 600; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .avatar { display: inline-block; flex: none; line-height: 0; }
 .avatar svg { display: block; }

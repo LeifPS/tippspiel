@@ -86,7 +86,13 @@ for (const [pid, picks] of [[1, [['1x2', '1', 2], ['exact', '3:1', 13], ['btts',
 await addTip(1, 5001, '1x2', 'X', 4);
 await addTip(1, 5001, 'ou25', 'U', 2);
 await addTip(2, 5003, '1x2', '2', 3);
+await addTip(2, 5002, 'exact', '2:2', 13);
+await addTip(3, 5002, '1x2', 'X', 4);
+await addTip(3, 5001, '1x2', 'X', 4);
 await settleMatches(db);
+// Für die Vorschau: Spieler sind schon länger dabei, ältere Wertungen liegen mehr als 24 Stunden zurück
+await db.prepare('UPDATE players SET created_at = ? WHERE id IN (1, 2)').bind(now() - 3 * 86400).run();
+await db.prepare('UPDATE tips SET settled_at = ? WHERE match_id IN (5001, 5002)').bind(now() - 2 * 86400).run();
 // Nur für die Vorschau: Leif bekommt Bonuspunkte, damit sich der Shop ausprobieren lässt
 await db.prepare("UPDATE tips SET points = points + 100 WHERE player_id = 1 AND market = 'exact' AND match_id = 5000").run();
 

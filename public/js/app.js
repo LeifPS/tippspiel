@@ -643,29 +643,32 @@ async function viewTable(id) {
 }
 
 async function viewLeaderboard(id) {
-  const period = state.period ?? 'week';
   mount(shell('rangliste', topBar(), loading()));
-  let data;
-  try {
-    data = await api(`/api/leaderboard?period=${period}`);
-  } catch (e) {
-    if (id !== renderId) return;
-    return mount(shell('rangliste', topBar(), errorBox(e, () => render())));
-  }
+  const data = await api('/api/leaderboard');
   if (id !== renderId) return;
-  const setPeriod = (p) => { state.period = p; render(); };
+
+  // Platzänderung der letzten 24 Stunden: Pfeil nach oben/unten mit Anzahl, Strich ohne Änderung, "neu" für Neulinge
+  const changeEl = (c) => {
+    if (c === null) return h('span', { class: 'chg new' }, 'neu');
+    if (c === 0) return h('span', { class: 'chg same', 'aria-label': 'Platz unverändert' }, h('i', { class: 'dash' }));
+    return h('span', { class: `chg ${c > 0 ? 'up' : 'down'}`, 'aria-label': `${c > 0 ? 'Aufgestiegen' : 'Abgestiegen'} um ${Math.abs(c)}` }, icon(c > 0 ? 'up' : 'caretdown', 12), Math.abs(c));
+  };
+  // Immer drei Felder, damit die Spalten untereinander passen: leere Felder links, jüngstes Spiel rechts
+  const recentEl = (recent) =>
+    h('div', { class: 'recent', role: 'group', 'aria-label': 'Punkte der letzten Spiele' },
+      [...Array(3 - recent.length).fill(null), ...recent].map((p) => h('span', { class: `form ${p === null ? 'empty' : p > 0 ? 'plus' : ''}` }, p === null ? '' : p)));
+
   const rows = data.rows.map((r) =>
     h('div', { class: `rank-row ${r.me ? 'me' : ''} ${r.rank === 1 ? 'first' : ''}` },
-      h('div', { class: 'rank' }, r.rank),
-      avatarEl(r.avatar, r.frame, 52),
-      h('div', null, h('div', { class: 'nm' }, r.name), h('div', { class: 'sub' }, r.hitRate === null ? 'Noch nichts gewertet' : `${r.hitRate} % richtig, ${r.exact} genau`)),
+      h('div', { class: 'rank' }, h('span', { class: 'n' }, `${r.rank}.`), changeEl(r.change)),
+      avatarEl(r.avatar, r.frame, 44),
+      h('div', { class: 'who' }, h('div', { class: 'nm' }, r.name), h('div', { class: 'sub' }, r.hitRate === null ? 'Noch nichts gewertet' : `${r.hitRate} % richtig`)),
+      recentEl(r.recent),
       h('div', { class: 'score' }, r.points, h('small', null, 'Punkte')),
     ));
   mount(shell('rangliste', topBar(),
-    h('div', { class: 'page-title' }, h('h1', null, 'Rangliste'), h('p', null, period === 'week' ? 'Diese Woche, Montag bis Sonntag.' : 'Alle Spiele zusammen.')),
-    h('div', { class: 'bar' }, h('div', { class: 'seg', role: 'group', 'aria-label': 'Zeitraum' },
-      h('button', { 'aria-pressed': period === 'week', onclick: () => setPeriod('week') }, 'Diese Woche'),
-      h('button', { 'aria-pressed': period === 'all', onclick: () => setPeriod('all') }, 'Gesamt'))),
+    h('div', { class: 'page-title' }, h('h1', null, 'Rangliste'),
+      h('p', null, 'Alle Spiele zusammen. Rechts stehen die Punkte der letzten 3 gewerteten Tipps und dann alle Punkte. Der Pfeil beim Platz zeigt die Veränderung der letzten 24 Stunden.')),
     h('div', { style: 'margin-top:12px;border-top:1px solid var(--linie)' }, rows),
     h('div', { class: 'empty' }, h('h2', null, 'Mehr Mitspieler'), h('p', null, `Gruppencode: ${state.group.code}. Wer ihn eingibt, spielt in dieser Gruppe mit.`)),
   ));

@@ -115,7 +115,7 @@ const SETTLE_KEY_SQL = `CASE WHEN status = 'FINISHED' AND home_goals IS NOT NULL
 
 // Wertet alle Spiele aus, deren Endstand sich seit der letzten Wertung geändert hat.
 // Nachträgliche Korrekturen der API werden dadurch automatisch neu gewertet.
-export async function settleMatches(db) {
+export async function settleMatches(db, now = Math.floor(Date.now() / 1000)) {
   const { results: pending } = await db
     .prepare(
       `SELECT id, status, home_goals, away_goals FROM matches
@@ -141,8 +141,8 @@ export async function settleMatches(db) {
         points = r.points;
       }
       return db
-        .prepare('UPDATE tips SET status = ?, points = ? WHERE player_id = ? AND match_id = ? AND market = ?')
-        .bind(status, points, t.player_id, m.id, t.market);
+        .prepare('UPDATE tips SET status = ?, points = ?, settled_at = ? WHERE player_id = ? AND match_id = ? AND market = ?')
+        .bind(status, points, now, t.player_id, m.id, t.market);
     });
     updates.push(db.prepare('UPDATE matches SET settled_key = ? WHERE id = ?').bind(key, m.id));
     for (let i = 0; i < updates.length; i += 50) await db.batch(updates.slice(i, i + 50));
@@ -202,7 +202,7 @@ export async function runSync(env, now = nowSec(), deps = {}) {
     if (res.available !== null && res.available <= RATE.reserve) break; // API meldet: Minutenbudget fast leer
   }
 
-  report.settled = await settleMatches(db);
+  report.settled = await settleMatches(db, now);
   await db.prepare('DELETE FROM api_calls WHERE ts < ?').bind(now - 3600).run();
   return report;
 }

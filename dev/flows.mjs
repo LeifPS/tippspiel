@@ -138,5 +138,14 @@ await p2.reload({ waitUntil: 'domcontentloaded' });
 await p2.waitForSelector('.empty:has-text("Keine Verbindung")');
 log('Verbindungsfehler: Fehlermeldung mit erneutem Versuch');
 
+// 10. Rangliste: eine Liste mit Platzänderung und den letzten Spielen
+await p2.goto('http://localhost:8787/#/rangliste', { waitUntil: 'domcontentloaded' });
+await p2.waitForSelector('.rank-row');
+assert.equal(await p2.locator('.seg').count(), 0);
+assert.equal(await p2.locator('.rank-row .recent .form').count(), 9);
+assert.ok((await p2.locator('.rank-row .chg').count()) === 3);
+await p2.screenshot({ path: `${out}/f6-rangliste.png` });
+log('Rangliste: eine Liste, letzte Spiele und Platzänderung');
+
 await browser.close();
 console.log(errors.length ? 'JS-FEHLER:\n' + errors.join('\n') : 'keine JS-Fehler');

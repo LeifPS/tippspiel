@@ -158,10 +158,9 @@ test('Wertung, Rangliste, Münzen und Shop', async () => {
   assert.deepEqual(lb.data.rows.map((r) => [r.name, r.rank, r.points, r.exact]), [['Leif', 1, 9, 1], ['Mia', 2, 2, 0]]);
   assert.equal(lb.data.rows[1].me, true);
   assert.equal(lb.data.rows[0].hitRate, 100);
-  const week = await call('GET', '/api/leaderboard?period=week', { token: mia, now: KICKOFF + 8000 });
-  assert.equal(week.data.rows[0].points, 9);
-  const nextWeek = await call('GET', '/api/leaderboard?period=week', { token: mia, now: KICKOFF + 8 * 86400 });
-  assert.equal(nextWeek.data.rows[0].points, 0);
+  // Letzte Spiele: Leif 9 Punkte, Mia 2 Punkte; keine Platzänderung, weil beide erst heute dazugekommen sind
+  assert.deepEqual(lb.data.rows.map((r) => r.recent), [[9], [2]]);
+  assert.deepEqual(lb.data.rows.map((r) => r.change), [null, null]);
 
   // Münzen = gewonnene Punkte minus Ausgaben
   const me = await call('GET', '/api/me', { token: leif });
@@ -302,4 +301,50 @@ test('Ligatabellen: nur Wettbewerbe der Gruppe, sortiert nach Platz', async () =
   assert.deepEqual(only.data.competitions.map((c) => c.code), ['BL1']);
   assert.equal(only.data.comp, 'BL1');
   assert.equal((await call('GET', '/api/tables')).status, 401);
+});
+
+test('Rangliste: Platzänderung der letzten 24 Stunden und Punkte der letzten 3 Spiele', async () => {
+  const { db, call } = setup();
+  const { leif } = await family(call);
+  // Beide sind seit 3 Tagen dabei
+  await db.prepare('UPDATE players SET created_at = ?').bind(NOW - 3 * 86400).run();
+  const game = (id, kickoff, home, away) =>
+    apiMatch({ id, utcDate: new Date(kickoff * 1000).toISOString(), status: 'FINISHED', score: { duration: 'REGULAR', fullTime: { home, away } } });
+  // Spiele: 1001 vor 2 Tagen (Leif 1x2 Heim richtig), 1002/1003/1004 heute, Mia gewinnt dort mehr
+  const t0 = NOW - 2 * 86400;
+  await upsertMatches(db, [game(1001, t0, 2, 0), game(1002, NOW - 5 * 3600, 1, 1), game(1003, NOW - 4 * 3600, 1, 0), game(1004, NOW - 3 * 3600, 0, 0), game(1005, NOW - 2 * 3600, 2, 2)], NOW);
+  const ids = Object.fromEntries((await db.prepare('SELECT id, name FROM players').all()).results.map((r) => [r.name, r.id]));
+  const ins = db.prepare('INSERT INTO tips (player_id, match_id, market, pick, potential, created_at, status, points, settled_at) VALUES (?,?,?,?,?,?,?,?,?)');
+  const rows = [
+    // Leif: gestern schon 3 Punkte, heute nichts richtig
+    [ids.Leif, 1001, '1x2', '1', 3, 0, 'won', 3, t0 + 7200],
+    [ids.Leif, 1002, '1x2', '1', 3, 0, 'lost', 0, NOW - 3 * 3600],
+    [ids.Leif, 1003, '1x2', '2', 3, 0, 'lost', 0, NOW - 2 * 3600],
+    // Mia: gestern nichts, heute drei richtige: 4 + 3 + 9
+    [ids.Mia, 1002, '1x2', 'X', 4, 0, 'won', 4, NOW - 3 * 3600],
+    [ids.Mia, 1003, '1x2', '1', 3, 0, 'won', 3, NOW - 2 * 3600],
+    [ids.Mia, 1004, 'exact', '0:0', 9, 0, 'won', 9, NOW - 1 * 3600],
+    [ids.Mia, 1005, '1x2', '1', 3, 0, 'lost', 0, NOW - 600],
+  ];
+  for (const r of rows) await ins.bind(...r).run();
+
+  const lb = await call('GET', '/api/leaderboard', { token: leif, now: NOW });
+  const [first, second] = lb.data.rows;
+  // Jetzt: Mia 16 Punkte, Leif 3. Vor 24 Stunden: Leif 3, Mia 0 -> Mia ist aufgestiegen, Leif abgestiegen
+  assert.deepEqual([first.name, first.rank, first.points, first.change], ['Mia', 1, 16, 1]);
+  assert.deepEqual([second.name, second.rank, second.points, second.change], ['Leif', 2, 3, -1]);
+  // Die letzten drei Spiele, ältestes links, jüngstes rechts
+  assert.deepEqual(first.recent, [3, 9, 0]);
+  assert.deepEqual(second.recent, [3, 0, 0]);
+});
+
+test('Rangliste: Neue Mitspieler haben keine Platzänderung, ohne Bewegung bleibt der Platz gleich', async () => {
+  const { db, call } = setup();
+  const { leif } = await family(call);
+  await db.prepare('UPDATE players SET created_at = ? WHERE name = ?').bind(NOW - 3 * 86400, 'Leif').run();
+  const lb = await call('GET', '/api/leaderboard', { token: leif, now: NOW });
+  const byName = Object.fromEntries(lb.data.rows.map((r) => [r.name, r]));
+  assert.equal(byName.Leif.change, 0);
+  assert.equal(byName.Mia.change, null);
+  assert.deepEqual(byName.Leif.recent, []);
 });

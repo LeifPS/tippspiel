@@ -118,7 +118,7 @@ test('Absage und Elfmeterschießen ohne reguläre Zeit: Tipps verfallen ohne Pun
   await db.prepare("INSERT INTO groups (code, name, created_at) VALUES ('FAM','F',0)").run();
   await db.prepare("INSERT INTO players (id, group_code, name, salt, pin_hash, created_at) VALUES (1,'FAM','L','s','h',0)").run();
   for (const id of [1, 2]) {
-    await db.prepare("INSERT INTO tips VALUES (1, ?, '1x2', '1', 2, 'open', 0, 0)").bind(id).run();
+    await db.prepare("INSERT INTO tips (player_id, match_id, market, pick, potential, status, points, created_at) VALUES (1, ?, '1x2', '1', 2, 'open', 0, 0)").bind(id).run();
   }
   await settleMatches(db);
   const rows = (await db.prepare('SELECT match_id, status, points FROM tips ORDER BY match_id').all()).results;

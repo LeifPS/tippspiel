@@ -441,47 +441,83 @@ async function leagueTable(url, db, player) {
 
 // ---------- Rangliste ----------
 
+// Eine Rangliste für alle Spiele. Dazu: Platzänderung der letzten 24 Stunden und die Punkte der letzten 3 Spiele.
 async function leaderboard(url, db, player, now) {
-  const week = url.searchParams.get('period') === 'week';
-  const d = new Date(now * 1000);
-  const since = week ? startOfUtcDay(now) - ((d.getUTCDay() + 6) % 7) * DAY : 0;
-  const { results } = await db
-    .prepare(
-      `SELECT p.id, p.name, p.avatar, p.frame, p.title,
-         COALESCE(SUM(CASE WHEN t.status = 'won' THEN t.points END), 0) AS points,
-         COUNT(CASE WHEN t.status IN ('won','lost') THEN 1 END) AS settled,
-         COUNT(CASE WHEN t.status = 'won' THEN 1 END) AS won,
-         COUNT(CASE WHEN t.status = 'won' AND t.market = 'exact' THEN 1 END) AS exact,
-         COUNT(t.market) AS tips,
-         (SELECT COALESCE(SUM(a.points), 0) FROM tips a WHERE a.player_id = p.id AND a.status = 'won') AS total_points
-       FROM players p
-       LEFT JOIN (SELECT t.* FROM tips t JOIN matches m ON m.id = t.match_id WHERE m.kickoff >= ?) t ON t.player_id = p.id
-       WHERE p.group_code = ?
-       GROUP BY p.id
-       ORDER BY points DESC, exact DESC, won DESC, p.name COLLATE NOCASE`,
-    )
-    .bind(since, player.group_code)
+  const cutoff = now - DAY;
+  const { results: players } = await db
+    .prepare('SELECT id, name, avatar, frame, title, created_at FROM players WHERE group_code = ?')
+    .bind(player.group_code)
     .all();
-  let rank = 0;
-  let prev = null;
-  const rows = results.map((r, i) => {
-    const key = `${r.points}|${r.exact}|${r.won}`;
-    if (key !== prev) rank = i + 1;
-    prev = key;
+  const { results: tips } = await db
+    .prepare(
+      `SELECT t.player_id, t.match_id, t.market, t.status, t.points, COALESCE(t.settled_at, m.kickoff) AS at, m.kickoff
+       FROM tips t JOIN matches m ON m.id = t.match_id JOIN players p ON p.id = t.player_id
+       WHERE p.group_code = ?`,
+    )
+    .bind(player.group_code)
+    .all();
+
+  const stats = new Map(
+    players.map((p) => [p.id, { p, now: { points: 0, won: 0, exact: 0 }, before: { points: 0, won: 0, exact: 0 }, settled: 0, tips: 0, games: new Map() }]),
+  );
+  for (const t of tips) {
+    const st = stats.get(t.player_id);
+    st.tips++;
+    if (t.status !== 'won' && t.status !== 'lost') continue;
+    st.settled++;
+    const won = t.status === 'won';
+    for (const [bucket, counts] of [['now', true], ['before', t.at <= cutoff]]) {
+      if (!counts || !won) continue;
+      st[bucket].points += t.points;
+      st[bucket].won++;
+      if (t.market === 'exact') st[bucket].exact++;
+    }
+    const g = st.games.get(t.match_id) ?? { at: t.at, kickoff: t.kickoff, points: 0 };
+    g.points += won ? t.points : 0;
+    st.games.set(t.match_id, g);
+  }
+
+  // Gleiche Wertung = gleicher Platz. Reihenfolge: Punkte, genaue Ergebnisse, richtige Tipps, Name
+  const rankAll = (list, bucket) => {
+    const sorted = [...list].sort((a, b) =>
+      b[bucket].points - a[bucket].points || b[bucket].exact - a[bucket].exact || b[bucket].won - a[bucket].won ||
+      a.p.name.localeCompare(b.p.name, 'de', { sensitivity: 'base' }));
+    const ranks = new Map();
+    let rank = 0;
+    let prev = null;
+    sorted.forEach((st, i) => {
+      const key = `${st[bucket].points}|${st[bucket].exact}|${st[bucket].won}`;
+      if (key !== prev) rank = i + 1;
+      prev = key;
+      ranks.set(st.p.id, rank);
+    });
+    return { sorted, ranks };
+  };
+  const all = [...stats.values()];
+  const { sorted, ranks } = rankAll(all, 'now');
+  // Platz vor 24 Stunden, nur unter denen, die schon dabei waren
+  const { ranks: oldRanks } = rankAll(all.filter((st) => st.p.created_at <= cutoff), 'before');
+
+  const rows = sorted.map((st) => {
+    const rank = ranks.get(st.p.id);
+    const oldRank = oldRanks.get(st.p.id) ?? null;
+    const recent = [...st.games.values()].sort((a, b) => b.at - a.at || b.kickoff - a.kickoff).slice(0, 3).map((g) => g.points).reverse();
     return {
       rank,
-      ...publicPlayer(r),
-      points: r.points,
-      settled: r.settled,
-      won: r.won,
-      exact: r.exact,
-      tips: r.tips,
-      hitRate: r.settled > 0 ? Math.round((r.won / r.settled) * 100) : null,
-      level: levelFor(r.total_points).level,
-      me: r.id === player.id,
+      change: oldRank === null ? null : oldRank - rank,
+      ...publicPlayer(st.p),
+      points: st.now.points,
+      recent,
+      settled: st.settled,
+      won: st.now.won,
+      exact: st.now.exact,
+      tips: st.tips,
+      hitRate: st.settled > 0 ? Math.round((st.now.won / st.settled) * 100) : null,
+      level: levelFor(st.now.points).level,
+      me: st.p.id === player.id,
     };
   });
-  return json({ period: week ? 'week' : 'all', since: week ? since : null, rows });
+  return json({ rows });
 }
 
 // ---------- Profil und Shop ----------

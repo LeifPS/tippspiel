@@ -33,6 +33,8 @@ const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
   back: '<path d="M14.5 5l-7 7 7 7"/>',
+  up: '<path d="M12 6.5l7 11H5z" fill="currentColor"/>',
+  caretdown: '<path d="M12 17.5l-7-11h14z" fill="currentColor"/>',
   down: '<path d="M6 9.5l6 6 6-6"/>',
   chevron: '<path d="M9.5 5l7 7-7 7"/>',
   coin: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.6"/>',
